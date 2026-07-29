@@ -1,3 +1,7 @@
+"use client";
+import axios from "axios";
+import { useEffect, useState } from "react";
+
 type Job = {
   date: string;
   customer: string;
@@ -7,7 +11,7 @@ type Job = {
   status: string;
 };
 
-const jobs: Job[] = [
+const initialJobs: Job[] = [
   {
     date: "2026-07-01",
     customer: "Amazon千葉",
@@ -34,7 +38,27 @@ const jobs: Job[] = [
   },
 ];
 
-const groupedJobs = jobs.reduce((acc, job) => {
+export default function Home() {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [customer, setCustomer] = useState("");
+  const [work, setWork] = useState("");
+  const [technician, setTechnician] = useState("");
+  const [contractor, setContractor] = useState("");
+  const [status, setStatus] = useState("予定");
+
+useEffect(() => {
+  axios
+    .get("http://127.0.0.1:8000/jobs")
+    .then((response) => {
+      setJobs(response.data);
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+}, []);
+  const groupedJobs = jobs.reduce((acc, job) => {
   if (!acc[job.date]) {
     acc[job.date] = [];
   }
@@ -44,7 +68,6 @@ const groupedJobs = jobs.reduce((acc, job) => {
   return acc;
 }, {} as Record<string, Job[]>);
 
-export default function Home() {
   return (
     <main className="min-h-screen bg-gray-100 p-8">
 
@@ -62,8 +85,11 @@ export default function Home() {
             className="w-96 rounded-lg border border-gray-300 bg-white p-3 shadow-sm"
           />
 
-          <button className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700">
-            ＋ 案件追加
+          <button
+           onClick={() => setIsOpen(true)}
+           className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
+            >
+           ＋ 案件追加
           </button>
 
         </div>
@@ -140,6 +166,105 @@ export default function Home() {
 
       </div>
 
+    {isOpen && (
+  <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+    <div className="w-96 rounded-lg bg-white p-6 shadow-lg">
+      <h2 className="mb-4 text-2xl font-bold">案件追加</h2>
+
+      <div className="space-y-4">
+
+  <input
+    type="date"
+    value={date}
+    onChange={(e) => setDate(e.target.value)}
+    className="w-full rounded border p-2"
+  />
+
+  <input
+    type="text"
+    placeholder="顧客"
+    value={customer}
+    onChange={(e) => setCustomer(e.target.value)}
+    className="w-full rounded border p-2"
+  />
+
+  <input
+    type="text"
+    placeholder="作業内容"
+    value={work}
+    onChange={(e) => setWork(e.target.value)}
+    className="w-full rounded border p-2"
+  />
+
+  <input
+    type="text"
+    placeholder="担当者"
+    value={technician}
+    onChange={(e) => setTechnician(e.target.value)}
+    className="w-full rounded border p-2"
+  />
+
+  <input
+    type="text"
+    placeholder="外注"
+    value={contractor}
+    onChange={(e) => setContractor(e.target.value)}
+    className="w-full rounded border p-2"
+  />
+
+  <select
+    value={status}
+    onChange={(e) => setStatus(e.target.value)}
+    className="w-full rounded border p-2"
+  >
+    <option>予定</option>
+    <option>調整中</option>
+    <option>完了</option>
+  </select>
+
+</div>
+<button
+  onClick={async () => {
+    try {
+      await axios.post("http://127.0.0.1:8000/jobs", {
+        date,
+        customer,
+        work,
+        technician,
+        contractor,
+        status,
+      });
+
+      const response = await axios.get("http://127.0.0.1:8000/jobs");
+      setJobs(response.data);
+
+      setIsOpen(false);
+
+      setDate("");
+      setCustomer("");
+      setWork("");
+      setTechnician("");
+      setContractor("");
+      setStatus("予定");
+
+    } catch (error) {
+      console.error(error);
+      alert("登録に失敗しました");
+    }
+  }}
+  className="mt-6 w-full rounded bg-blue-600 py-2 text-white hover:bg-blue-700"
+>
+  登録
+</button>
+      <button
+  onClick={() => setIsOpen(false)}
+  className="mt-3 w-full rounded bg-red-500 py-2 text-white hover:bg-red-600"
+>
+  閉じる
+</button>
+    </div>
+  </div>
+)}
     </main>
   );
 }
