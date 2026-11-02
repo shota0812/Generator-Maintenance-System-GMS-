@@ -1,0 +1,13 @@
+# Next.js
+/frontend/.next/
+
+# Python
+**/__pycache__/
+*.py[cod]
+
+# Local database
+/backend/jobs.db
+
+# Node.js
+node_modules/
+
