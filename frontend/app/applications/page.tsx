@@ -32,11 +32,11 @@ export default function ApplicationsPage() {
   const loadData = async () => {
     try {
       const jobsResponse = await axios.get(
-        "http://127.0.0.1:8000/jobs"
+        "https://gms-backend-iazu.onrender.com/jobs"
       );
 
       const applicationsResponse = await axios.get(
-        "http://127.0.0.1:8000/applications"
+        "https://gms-backend-iazu.onrender.com/applications"
       );
 
       setJobs(jobsResponse.data);
@@ -53,7 +53,7 @@ export default function ApplicationsPage() {
   ) => {
     try {
       await axios.put(
-        `http://127.0.0.1:8000/applications/${applicationId}/status`,
+        `https://gms-backend-iazu.onrender.com/applications/${applicationId}/status`,
         null,
         {
           params: {

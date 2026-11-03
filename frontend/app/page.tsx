@@ -166,15 +166,15 @@ export default function Home() {
   const loadData = async () => {
   try {
     const jobsResponse = await axios.get(
-      "http://127.0.0.1:8000/jobs"
+      "https://gms-backend-iazu.onrender.com/jobs"
     );
 
     const applicationsResponse = await axios.get(
-      "http://127.0.0.1:8000/applications"
+      "https://gms-backend-iazu.onrender.com/applications"
     );
 
     const personalEventsResponse = await axios.get(
-      "http://127.0.0.1:8000/personal-events/",
+      "https://gms-backend-iazu.onrender.com/personal-events/",
       {
         params: {
           user_id: userId,
@@ -183,7 +183,7 @@ export default function Home() {
     );
 
     const pendingUsersResponse = await axios.get(
-      "http://127.0.0.1:8000/users/pending"
+      "https://gms-backend-iazu.onrender.com/users/pending"
     );
 
     setJobs(jobsResponse.data);
@@ -202,7 +202,7 @@ const updateUserApproval = async (
 ) => {
   try {
     await axios.put(
-      `http://127.0.0.1:8000/users/${userId}/approval-status`,
+      `https://gms-backend-iazu.onrender.com/users/${userId}/approval-status`,
       null,
       {
         params: {
@@ -237,7 +237,7 @@ const addPersonalEvent = async () => {
 
   try {
     await axios.post(
-      "http://127.0.0.1:8000/personal-events/",
+      "https://gms-backend-iazu.onrender.com/personal-events/",
       {
         user_id: userId,
         date: personalEventDate,
@@ -268,7 +268,7 @@ const deletePersonalEvent = async (eventId: number) => {
 
   try {
     await axios.delete(
-      `http://127.0.0.1:8000/personal-events/${eventId}`,
+      `https://gms-backend-iazu.onrender.com/personal-events/${eventId}`,
       {
         params: {
           user_id: userId,
@@ -289,7 +289,7 @@ const deletePersonalEvent = async (eventId: number) => {
   ) => {
     try {
       await axios.put(
-        `http://127.0.0.1:8000/applications/${applicationId}/status`,
+        `https://gms-backend-iazu.onrender.com/applications/${applicationId}/status`,
         null,
         {
           params: {
@@ -388,7 +388,7 @@ const deletePersonalEvent = async (eventId: number) => {
 
     try {
       await axios.delete(
-        `http://127.0.0.1:8000/jobs/${jobId}`
+        `https://gms-backend-iazu.onrender.com/jobs/${jobId}`
       );
 
       await loadData();
@@ -415,12 +415,12 @@ const deletePersonalEvent = async (eventId: number) => {
 
       if (editingJob) {
         await axios.put(
-          `http://127.0.0.1:8000/jobs/${editingJob.id}`,
+          `https://gms-backend-iazu.onrender.com/jobs/${editingJob.id}`,
           jobData
         );
       } else {
         await axios.post(
-          "http://127.0.0.1:8000/jobs",
+          "https://gms-backend-iazu.onrender.com/jobs",
           jobData
         );
       }

@@ -4,7 +4,7 @@
 import axios from "axios";
 import { useState } from "react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://gms-backend-iazu.onrender.com";
 
 export default function AccountPage() {
   const [mode, setMode] = useState<"register" | "login">("register");

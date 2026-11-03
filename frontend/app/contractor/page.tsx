@@ -50,15 +50,15 @@ export default function ContractorPage() {
   const loadData = async (targetUserId: number) => {
     try {
       const jobsResponse = await axios.get(
-        "http://127.0.0.1:8000/jobs"
+        "https://gms-backend-iazu.onrender.com/jobs"
       );
 
       const applicationsResponse = await axios.get(
-        "http://127.0.0.1:8000/applications"
+        "https://gms-backend-iazu.onrender.com/applications"
       );
 
       const personalEventsResponse = await axios.get(
-        "http://127.0.0.1:8000/personal-events/",
+        "https://gms-backend-iazu.onrender.com/personal-events/",
         {
           params: {
             user_id: targetUserId,
@@ -105,7 +105,7 @@ export default function ContractorPage() {
 
     try {
       await axios.post(
-        "http://127.0.0.1:8000/applications",
+        "https://gms-backend-iazu.onrender.com/applications",
         {
           job_id: jobId,
           user_id: userId,
@@ -168,7 +168,7 @@ export default function ContractorPage() {
 
     try {
       await axios.post(
-        "http://127.0.0.1:8000/personal-events/",
+        "https://gms-backend-iazu.onrender.com/personal-events/",
         {
           user_id: userId,
           date: personalEventDate,
@@ -204,7 +204,7 @@ export default function ContractorPage() {
 
     try {
       await axios.delete(
-        `http://127.0.0.1:8000/personal-events/${eventId}`,
+        `https://gms-backend-iazu.onrender.com/personal-events/${eventId}`,
         {
           params: {
             user_id: userId,
