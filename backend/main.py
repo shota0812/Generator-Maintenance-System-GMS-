@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.cors import CORSMiddleware
 import models
 from database import engine
 from routers import jobs, approval, auth, personal_events
@@ -8,22 +7,13 @@ from routers import jobs, approval, auth, personal_events
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "https://generator-maintenance-system-gms.vercel.app",
     ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"
-                   "https://generator-maintenance-system-gms.vercel.app"
-                   ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
