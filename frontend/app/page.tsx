@@ -46,6 +46,10 @@ type PendingUser = {
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [isOpen, setIsOpen] = useState(false);
 
   const [date, setDate] = useState("");
@@ -159,9 +163,33 @@ export default function Home() {
   // データ読み込み
   // =========================
 
-  useEffect(() => {
-    loadData();
-  }, []);
+    const handleAdminLogin = async () => {
+    try {
+      setLoginError("");
+
+      const response = await axios.post(
+        "https://gms-backend-iazu.onrender.com/users/admin/login",
+        {
+          email: adminEmail,
+          password: adminPassword,
+        }
+      );
+
+      if (response.data.authenticated) {
+        setIsAuthenticated(true);
+      }
+    } catch (error) {
+      setLoginError(
+        "メールアドレスまたはパスワードが違います"
+      );
+    }
+  };
+
+    useEffect(() => {
+    if (isAuthenticated) {
+      loadData();
+    }
+  }, [isAuthenticated]);
 
   const loadData = async () => {
   try {
@@ -446,6 +474,44 @@ const deletePersonalEvent = async (eventId: number) => {
     }
   };
 
+  if (!isAuthenticated) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-100 p-6">
+      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow">
+        <h1 className="mb-6 text-2xl font-bold">管理者ログイン</h1>
+
+        <div className="space-y-4">
+          <input
+            type="email"
+            placeholder="管理者メールアドレス"
+            value={adminEmail}
+            onChange={(e) => setAdminEmail(e.target.value)}
+            className="w-full rounded border p-3"
+          />
+
+          <input
+            type="password"
+            placeholder="パスワード"
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+            className="w-full rounded border p-3"
+          />
+
+          {loginError && (
+            <p className="text-sm text-red-600">{loginError}</p>
+          )}
+
+          <button
+            onClick={handleAdminLogin}
+            className="w-full rounded bg-blue-600 p-3 text-white"
+          >
+            ログイン
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
   return (
     <div className="mx-auto max-w-7xl p-6">
 
