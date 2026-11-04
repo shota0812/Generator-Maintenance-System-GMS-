@@ -153,12 +153,6 @@ def update_user_approval_status(
         )
 
     # 管理者アカウントは変更させない
-    if user.id == 1:
-        raise HTTPException(
-            status_code=400,
-            detail="管理者アカウントは変更できません",
-        )
-
     if user.role != "外注":
         raise HTTPException(
             status_code=400,
