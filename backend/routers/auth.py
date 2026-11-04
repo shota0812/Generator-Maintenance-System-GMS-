@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pwdlib import PasswordHash
 
+import os
+from pydantic import BaseModel
+
 import models
 import schemas
 from database import SessionLocal
@@ -205,4 +208,41 @@ def delete_user(
 
     return {
         "message": "Deleted",
+    }
+
+# =========================
+# 管理者ログイン
+# =========================
+
+class AdminLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/admin/login")
+def admin_login(
+    request: AdminLoginRequest,
+):
+    admin_email = os.getenv("ADMIN_EMAIL")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+
+    if not admin_email or not admin_password:
+        raise HTTPException(
+            status_code=500,
+            detail="管理者認証の設定がありません",
+        )
+
+    if (
+        request.email != admin_email
+        or request.password != admin_password
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="管理者のメールアドレスまたはパスワードが違います",
+        )
+
+    return {
+        "authenticated": True,
+        "role": "admin",
+        "email": admin_email,
     }
