@@ -23,7 +23,7 @@ app.include_router(jobs.router)
 app.include_router(approval.router)
 app.include_router(auth.router)
 app.include_router(personal_events.router)
-
+app.include_router(applications.router)
 @app.get("/")
 def root():
     return {

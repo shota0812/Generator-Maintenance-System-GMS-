@@ -55,6 +55,30 @@ def create_application(
             detail="User not found",
         )
 
+        # 参加対象者として指定されているか確認
+    target = (
+        db.query(models.JobTargetUser)
+        .filter(
+            models.JobTargetUser.job_id == application.job_id,
+            models.JobTargetUser.user_id == application.user_id,
+        )
+        .first()
+    )
+
+    target_count = (
+        db.query(models.JobTargetUser)
+        .filter(
+            models.JobTargetUser.job_id == application.job_id
+        )
+        .count()
+    )
+
+    if target_count > 0 and target is None:
+        raise HTTPException(
+            status_code=403,
+            detail="この案件の参加対象者ではありません",
+        )
+    
     # 二重申請防止
     existing = (
         db.query(models.Application)
@@ -143,14 +167,26 @@ def update_application_status(
 
     application.status = status
 
-    # 管理者が承認した場合
+        # 管理者が承認した場合
     if status == "承認":
         # 案件を確定
         application.job.status = "確定"
 
-        # 承認されたユーザーを案件の担当者として登録
-        application.job.technician = application.user.name
-        application.job.contractor = application.user.company
+        # 承認されたユーザーの情報を担当者欄に追加
+        technician = application.user.name
+        contractor = application.user.company
+
+        if application.job.technician:
+            if technician not in application.job.technician.split(", "):
+                application.job.technician += f", {technician}"
+        else:
+            application.job.technician = technician
+
+        if application.job.contractor:
+            if contractor not in application.job.contractor.split(", "):
+                application.job.contractor += f", {contractor}"
+        else:
+            application.job.contractor = contractor
 
     db.commit()
     db.refresh(application)

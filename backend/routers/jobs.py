@@ -41,9 +41,35 @@ def create_job(
         work=job.work,
         required_people=job.required_people,
         status=job.status,
+        technician=job.technician,
+        contractor=job.contractor,
     )
 
     db.add(db_job)
+    db.commit()
+    db.refresh(db_job)
+
+    # 参加対象者を登録
+    for user_id in job.target_user_ids:
+        user = (
+            db.query(models.User)
+            .filter(models.User.id == user_id)
+            .first()
+        )
+
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User {user_id} not found",
+            )
+
+        target = models.JobTargetUser(
+            job_id=db_job.id,
+            user_id=user_id,
+        )
+
+        db.add(target)
+
     db.commit()
     db.refresh(db_job)
 
@@ -75,8 +101,36 @@ def update_job(
     db_job.date = job.date
     db_job.customer = job.customer
     db_job.work = job.work
+    db_job.technician = job.technician
+    db_job.contractor = job.contractor
     db_job.required_people = job.required_people
     db_job.status = job.status
+
+    # 既存の参加対象者を削除
+    db.query(models.JobTargetUser).filter(
+        models.JobTargetUser.job_id == job_id
+    ).delete()
+
+    # 新しい参加対象者を登録
+    for user_id in job.target_user_ids:
+        user = (
+            db.query(models.User)
+            .filter(models.User.id == user_id)
+            .first()
+        )
+
+        if user is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User {user_id} not found",
+            )
+
+        target = models.JobTargetUser(
+            job_id=job_id,
+            user_id=user_id,
+        )
+
+        db.add(target)
 
     db.commit()
     db.refresh(db_job)

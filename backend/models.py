@@ -28,6 +28,15 @@ class Job(Base):
         cascade="all, delete-orphan",
     )
 
+    target_users = relationship(
+    "JobTargetUser",
+    back_populates="job",
+    cascade="all, delete-orphan",
+)
+
+    @property
+    def target_user_ids(self):
+        return [target.user_id for target in self.target_users]
 
 class User(Base):
     __tablename__ = "users"
@@ -54,6 +63,12 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    target_jobs = relationship(
+    "JobTargetUser",
+    back_populates="user",
+    cascade="all, delete-orphan",
+)
 class Application(Base):
     __tablename__ = "applications"
 
@@ -113,3 +128,27 @@ class PersonalEvent(Base):
 
     # 予定の詳細
     description = Column(String, nullable=True)
+
+# =========================
+# 案件の参加対象者
+# =========================
+
+class JobTargetUser(Base):
+    __tablename__ = "job_target_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    job_id = Column(
+        Integer,
+        ForeignKey("jobs.id"),
+        nullable=False,
+    )
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+
+    job = relationship("Job")
+    user = relationship("User")

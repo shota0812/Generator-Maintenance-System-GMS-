@@ -12,6 +12,7 @@ type Job = {
   contractor: string;
   status: string;
   approval_status: string;
+  target_user_ids: number[];
 };
 
 type Application = {
@@ -44,6 +45,15 @@ type PendingUser = {
   approval_status: string;
 };
 
+type User = {
+  id: number;
+  company: string;
+  name: string;
+  role: string;
+  email: string | null;
+  approval_status: string;
+};
+
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -66,7 +76,8 @@ export default function Home() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
-
+  const [users, setUsers] = useState<User[]>([]);
+const [selectedTargetUserIds, setSelectedTargetUserIds] = useState<number[]>([]);
   const [showPersonalEventForm, setShowPersonalEventForm] = useState(false);
   const [personalEventDate, setPersonalEventDate] = useState("");
   const [personalEventTitle, setPersonalEventTitle] = useState("");
@@ -213,11 +224,14 @@ export default function Home() {
     const pendingUsersResponse = await axios.get(
       "https://gms-backend-iazu.onrender.com/users/pending"
     );
-
+    const usersResponse = await axios.get(
+  "https://gms-backend-iazu.onrender.com/users"
+);
     setJobs(jobsResponse.data);
     setApplications(applicationsResponse.data);
     setPersonalEvents(personalEventsResponse.data);
     setPendingUsers(pendingUsersResponse.data);
+    setUsers(usersResponse.data);
   } catch (error) {
     console.error(error);
   }
@@ -401,7 +415,7 @@ const deletePersonalEvent = async (eventId: number) => {
     setTechnician(job.technician);
     setContractor(job.contractor);
     setStatus(job.status);
-
+        setSelectedTargetUserIds(job.target_user_ids ?? []);
     setIsOpen(true);
   };
 
@@ -439,6 +453,7 @@ const deletePersonalEvent = async (eventId: number) => {
         technician,
         contractor,
         status,
+        target_user_ids: selectedTargetUserIds,
       };
 
       if (editingJob) {
@@ -777,7 +792,7 @@ const deletePersonalEvent = async (eventId: number) => {
         <button
           onClick={() => {
             setEditingJob(null);
-
+            setSelectedTargetUserIds([]);
             setDate("");
             setCustomer("");
             setWork("");
@@ -1523,6 +1538,46 @@ const deletePersonalEvent = async (eventId: number) => {
                 <option>調整中</option>
                 <option>完了</option>
               </select>
+
+              <div>
+  <p className="mb-2 font-semibold">参加対象者</p>
+
+  {users.filter((user) => user.approval_status === "承認済み").length === 0 ? (
+    <p className="text-sm text-gray-500">
+      承認済みのユーザーはいません。
+    </p>
+  ) : (
+    <div className="max-h-40 space-y-2 overflow-y-auto rounded border p-3">
+      {users
+        .filter((user) => user.approval_status === "承認済み")
+        .map((user) => (
+          <label key={user.id} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={selectedTargetUserIds.includes(user.id)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedTargetUserIds((prev) => [...prev, user.id]);
+                } else {
+                  setSelectedTargetUserIds((prev) =>
+                    prev.filter((id) => id !== user.id)
+                  );
+                }
+              }}
+            />
+
+            <span>
+              {user.company} / {user.name}
+            </span>
+          </label>
+        ))}
+    </div>
+  )}
+
+  <p className="mt-1 text-xs text-gray-500">
+    選択したユーザーだけが参加申請できます。
+  </p>
+</div>
 
               <button
                 onClick={handleSubmit}
