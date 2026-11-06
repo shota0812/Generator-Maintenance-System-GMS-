@@ -1,4 +1,3 @@
-
 "use client";
 
 import axios from "axios";
@@ -574,60 +573,6 @@ export default function Home() {
         発電機保守管理システム
       </h1>
 
-      {/* 外注ユーザー承認 */}
-
-      <div className="mb-8 rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-2xl font-bold">
-          外注ユーザー承認
-        </h2>
-
-        {pendingUsers.length === 0 ? (
-          <p className="text-gray-500">
-            現在、承認待ちのユーザーはいません。
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {pendingUsers.map((user) => (
-              <div
-                key={user.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4"
-              >
-                <div>
-                  <p className="font-bold">{user.company}</p>
-                  <p>{user.name}</p>
-                  <p className="text-sm text-gray-500">
-                    {user.email}
-                  </p>
-                  <p className="mt-1 text-sm text-yellow-700">
-                    {user.approval_status}
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() =>
-                      updateUserApproval(user.id, "承認済み")
-                    }
-                    className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-                  >
-                    承認
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      updateUserApproval(user.id, "却下")
-                    }
-                    className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
-                  >
-                    却下
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* 月・年切り替え */}
 
       <div className="mb-8">
@@ -715,84 +660,6 @@ export default function Home() {
             カレンダー表示
           </button>
         </div>
-      </div>
-
-      {/* 個人予定 */}
-
-      <div className="mb-6 rounded-lg bg-white p-5 shadow">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold">
-              管理者の個人予定
-            </h2>
-            <p className="mt-1 text-sm text-gray-500">
-              管理者自身のカレンダーに表示される予定です。
-            </p>
-          </div>
-
-          <button
-            onClick={() =>
-              setShowPersonalEventForm(!showPersonalEventForm)
-            }
-            className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
-          >
-            {showPersonalEventForm ? "閉じる" : "＋ 予定追加"}
-          </button>
-        </div>
-
-        {showPersonalEventForm && (
-          <div className="mt-5 space-y-4 border-t pt-5">
-            <div>
-              <label className="mb-1 block font-semibold">
-                日付
-              </label>
-              <input
-                type="date"
-                value={personalEventDate}
-                onChange={(e) =>
-                  setPersonalEventDate(e.target.value)
-                }
-                className="w-full rounded border p-3"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block font-semibold">
-                予定名
-              </label>
-              <input
-                type="text"
-                value={personalEventTitle}
-                onChange={(e) =>
-                  setPersonalEventTitle(e.target.value)
-                }
-                placeholder="例：社内打ち合わせ"
-                className="w-full rounded border p-3"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block font-semibold">
-                詳細（任意）
-              </label>
-              <textarea
-                value={personalEventDescription}
-                onChange={(e) =>
-                  setPersonalEventDescription(e.target.value)
-                }
-                placeholder="予定の詳細"
-                className="w-full rounded border p-3"
-              />
-            </div>
-
-            <button
-              onClick={addPersonalEvent}
-              className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
-            >
-              保存
-            </button>
-          </div>
-        )}
       </div>
 
       {/* 検索・案件追加 */}
@@ -1063,86 +930,85 @@ export default function Home() {
                   );
                 })()}
 
-                
+                {/* 外注会社・確定人数 */}
 
-{/* 外注会社・確定人数 */}
+                <tr>
+                  <td className="sticky left-0 z-10 border border-gray-300 bg-blue-100 p-3 font-bold">
+                    外注・確定人数
+                  </td>
 
-<tr>
-  <td className="sticky left-0 z-10 border border-gray-300 bg-blue-100 p-3 font-bold">
-    外注・確定人数
-  </td>
+                  {Array.from(
+                    {
+                      length: getDaysInMonth(currentYear, currentMonth),
+                    },
+                    (_, index) => {
+                      const day = index + 1;
+                      const dateString = getDateString(day);
 
-  {Array.from(
-    {
-      length: getDaysInMonth(currentYear, currentMonth),
-    },
-    (_, index) => {
-      const day = index + 1;
-      const dateString = getDateString(day);
+                      const dayApplications = dateApplications.filter(
+                        (application) => application.date === dateString
+                      );
 
-      const dayApplications = dateApplications.filter(
-        (application) => application.date === dateString
-      );
+                      const totalConfirmed = dayApplications
+                        .filter((application) => application.status === "承認")
+                        .reduce(
+                          (sum, application) =>
+                            sum + application.confirmed_people,
+                          0
+                        );
 
-      const totalConfirmed = dayApplications
-        .filter((application) => application.status === "承認")
-        .reduce(
-          (sum, application) =>
-            sum + application.confirmed_people,
-          0
-        );
+                      return (
+                        <td
+                          key={dateString}
+                          onClick={() => setSelectedDate(dateString)}
+                          className="w-[110px] min-w-[110px] cursor-pointer border border-gray-300 bg-blue-50 p-2 align-top"
+                        >
+                          <div className="space-y-2">
+                            {dayApplications.map((application) => (
+                              <div
+                                key={application.id}
+                                className="rounded border bg-white p-2 text-xs"
+                              >
+                                <p className="break-words font-bold">
+                                  {application.user.company}
+                                </p>
 
-      return (
-        <td
-          key={dateString}
-          onClick={() => setSelectedDate(dateString)}
-          className="w-[110px] min-w-[110px] cursor-pointer border border-gray-300 bg-blue-50 p-2 align-top"
-        >
-          <div className="space-y-2">
-            {dayApplications.map((application) => (
-              <div
-                key={application.id}
-                className="rounded border bg-white p-2 text-xs"
-              >
-                <p className="break-words font-bold">
-                  {application.user.company}
-                </p>
+                                {application.status === "承認" && (
+                                  <p className="mt-1 font-bold text-green-700">
+                                    確定{application.confirmed_people}人
+                                  </p>
+                                )}
 
-                {application.status === "承認" && (
-                  <p className="mt-1 font-bold text-green-700">
-                    確定{application.confirmed_people}人
-                  </p>
-                )}
+                                {application.status === "申請中" && (
+                                  <p className="mt-1 text-yellow-700">
+                                    申請中（{application.available_people}人）
+                                  </p>
+                                )}
 
-                {application.status === "申請中" && (
-                  <p className="mt-1 text-yellow-700">
-                    申請中（{application.available_people}人）
-                  </p>
-                )}
+                                {application.status === "却下" && (
+                                  <p className="mt-1 text-red-600">
+                                    依頼なし
+                                  </p>
+                                )}
+                              </div>
+                            ))}
 
-                {application.status === "却下" && (
-                  <p className="mt-1 text-red-600">
-                    依頼なし
-                  </p>
-                )}
-              </div>
-            ))}
+                            {dayApplications.some(
+                              (application) => application.status === "承認"
+                            ) && (
+                              <div className="border-t border-blue-300 pt-1 text-xs font-bold text-blue-800">
+                                合計：{totalConfirmed}人
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    }
+                  )}
+                </tr>
 
-            {dayApplications.some(
-              (application) => application.status === "承認"
-            ) && (
-              <div className="border-t border-blue-300 pt-1 text-xs font-bold text-blue-800">
-                合計：{totalConfirmed}人
-              </div>
-            )}
-          </div>
-        </td>
-      );
-    }
-  )}
-</tr>
+                {/* 管理者の個人予定：カレンダー内の表示は残す */}
 
-{/* 管理者の個人予定 */}
                 <tr>
                   <td className="sticky left-0 z-10 border border-gray-300 bg-green-100 p-3 font-bold">
                     管理者の予定
@@ -1557,6 +1423,138 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 下部：管理者の個人予定 */}
+
+      <div className="mt-10 mb-6 rounded-lg bg-white p-5 shadow">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold">
+              管理者の個人予定
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              管理者自身のカレンダーに表示される予定です。
+            </p>
+          </div>
+
+          <button
+            onClick={() =>
+              setShowPersonalEventForm(!showPersonalEventForm)
+            }
+            className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
+          >
+            {showPersonalEventForm ? "閉じる" : "＋ 予定追加"}
+          </button>
+        </div>
+
+        {showPersonalEventForm && (
+          <div className="mt-5 space-y-4 border-t pt-5">
+            <div>
+              <label className="mb-1 block font-semibold">
+                日付
+              </label>
+              <input
+                type="date"
+                value={personalEventDate}
+                onChange={(e) =>
+                  setPersonalEventDate(e.target.value)
+                }
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">
+                予定名
+              </label>
+              <input
+                type="text"
+                value={personalEventTitle}
+                onChange={(e) =>
+                  setPersonalEventTitle(e.target.value)
+                }
+                placeholder="例：社内打ち合わせ"
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">
+                詳細（任意）
+              </label>
+              <textarea
+                value={personalEventDescription}
+                onChange={(e) =>
+                  setPersonalEventDescription(e.target.value)
+                }
+                placeholder="予定の詳細"
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <button
+              onClick={addPersonalEvent}
+              className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
+            >
+              保存
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 下部：外注ユーザー承認 */}
+
+      <div className="mb-8 rounded-lg bg-white p-6 shadow">
+        <h2 className="mb-4 text-2xl font-bold">
+          外注ユーザー承認
+        </h2>
+
+        {pendingUsers.length === 0 ? (
+          <p className="text-gray-500">
+            現在、承認待ちのユーザーはいません。
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {pendingUsers.map((user) => (
+              <div
+                key={user.id}
+                className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4"
+              >
+                <div>
+                  <p className="font-bold">{user.company}</p>
+                  <p>{user.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {user.email}
+                  </p>
+                  <p className="mt-1 text-sm text-yellow-700">
+                    {user.approval_status}
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() =>
+                      updateUserApproval(user.id, "承認済み")
+                    }
+                    className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+                  >
+                    承認
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      updateUserApproval(user.id, "却下")
+                    }
+                    className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+                  >
+                    却下
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* 案件追加・編集モーダル */}
 
