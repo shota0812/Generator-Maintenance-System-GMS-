@@ -49,15 +49,25 @@ export default function AccountPage() {
           `ログイン成功：${response.data.name} さん`
         );
 
-        localStorage.setItem(
-          "userId",
-          String(response.data.id)
-        );
+        sessionStorage.setItem(
+  "userId",
+  String(response.data.id)
+);
 
-        localStorage.setItem(
-          "userRole",
-          response.data.role
-        );
+sessionStorage.setItem(
+  "userRole",
+  response.data.role
+);
+
+sessionStorage.setItem(
+  "userCompany",
+  response.data.company
+);
+
+sessionStorage.setItem(
+  "userName",
+  response.data.name
+);
 
         window.location.href = "/contractor";
       }

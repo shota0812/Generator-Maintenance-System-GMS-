@@ -45,7 +45,8 @@ export default function ContractorPage() {
   const [personalEventDate, setPersonalEventDate] = useState("");
   const [personalEventTitle, setPersonalEventTitle] = useState("");
   const [personalEventDescription, setPersonalEventDescription] = useState("");
-
+  const [userCompany, setUserCompany] = useState("");
+  const [userName, setUserName] = useState("");
   // データ取得
   const loadData = async (targetUserId: number) => {
     try {
@@ -75,26 +76,35 @@ export default function ContractorPage() {
     }
   };
 
-  // ログインユーザーIDを読み込む
-  useEffect(() => {
-    const savedUserId = localStorage.getItem("userId");
+// ログインユーザー情報を読み込む
+useEffect(() => {
+  const savedUserId = sessionStorage.getItem("userId");
 
-    if (!savedUserId) {
-      window.location.href = "/account";
-      return;
-    }
+  if (!savedUserId) {
+    window.location.href = "/account";
+    return;
+  }
 
-    const parsedUserId = Number(savedUserId);
+  const parsedUserId = Number(savedUserId);
 
-    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
-      localStorage.removeItem("userId");
-      window.location.href = "/account";
-      return;
-    }
+  if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+    sessionStorage.clear();
+    window.location.href = "/account";
+    return;
+  }
 
-    setUserId(parsedUserId);
-    loadData(parsedUserId);
-  }, []);
+  setUserId(parsedUserId);
+
+setUserCompany(
+  sessionStorage.getItem("userCompany") || ""
+);
+
+setUserName(
+  sessionStorage.getItem("userName") || ""
+);
+
+loadData(parsedUserId);
+}, []);
 
   // 参加申請
   const apply = async (jobId: number) => {
@@ -252,10 +262,17 @@ export default function ContractorPage() {
   return (
     <main className="min-h-screen bg-gray-100 p-8">
       <div className="mx-auto max-w-7xl">
-        {/* タイトル */}
-        <h1 className="mb-2 text-4xl font-bold">
-          外注案件カレンダー
-        </h1>
+        {/* ログインユーザー情報 */}
+<div className="mb-4 flex items-center justify-between">
+  <p className="text-lg font-semibold text-blue-700">
+    ようこそ、{userCompany} {userName}さん
+  </p>
+</div>
+
+{/* タイトル */}
+<h1 className="mb-2 text-4xl font-bold">
+  案件カレンダー
+</h1>
 
         <p className="mb-8 text-gray-600">
           案件の予定を確認して、参加したい案件へ申請できます。
