@@ -119,6 +119,20 @@ class DateApplication(Base):
         nullable=False,
     )
 
+    # 外注会社が申請した参加可能人数
+    available_people = Column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # 管理者が確定した依頼人数
+    confirmed_people = Column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
     status = Column(
         String,
         default="申請中",

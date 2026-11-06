@@ -50,15 +50,17 @@ def get_date_applications(
 # 日付単位の参加申請
 # =========================
 
-@router.post(
-    "",
-    response_model=schemas.DateApplication,
-)
+@router.post("", response_model=schemas.DateApplication)
 def create_date_application(
     application: schemas.DateApplicationCreate,
     db: Session = Depends(get_db),
 ):
-    # その日に案件が存在するか確認
+    if application.available_people < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Available people must be at least 1",
+        )
+
     job = (
         db.query(models.Job)
         .filter(models.Job.date == application.date)
@@ -71,7 +73,6 @@ def create_date_application(
             detail="No jobs on this date",
         )
 
-    # ユーザーの存在確認
     user = (
         db.query(models.User)
         .filter(models.User.id == application.user_id)
@@ -84,14 +85,12 @@ def create_date_application(
             detail="User not found",
         )
 
-    # アカウント承認確認
     if user.approval_status != "承認済み":
         raise HTTPException(
             status_code=403,
             detail="User is not approved",
         )
 
-    # 既存申請の確認
     existing = (
         db.query(models.DateApplication)
         .filter(
@@ -102,9 +101,10 @@ def create_date_application(
     )
 
     if existing is not None:
-        # 却下済みの場合は再申請
         if existing.status == "却下":
             existing.status = "申請中"
+            existing.available_people = application.available_people
+            existing.confirmed_people = 0
             db.commit()
             db.refresh(existing)
             return existing
@@ -114,11 +114,12 @@ def create_date_application(
             detail="Already applied for this date",
         )
 
-    # 日付申請を登録
     db_application = models.DateApplication(
         date=application.date,
         user_id=application.user_id,
         status="申請中",
+        available_people=application.available_people,
+        confirmed_people=0,
     )
 
     db.add(db_application)
@@ -129,13 +130,13 @@ def create_date_application(
 
 
 # =========================
-# 管理者による承認・却下
+# 申請中の人数変更（取引先）
 # =========================
 
-@router.put("/{application_id}/status")
-def update_date_application_status(
+@router.put("/{application_id}")
+def update_date_application(
     application_id: int,
-    status: str,
+    update: schemas.DateApplicationUpdate,
     db: Session = Depends(get_db),
 ):
     application = (
@@ -152,13 +153,131 @@ def update_date_application_status(
             detail="Date application not found",
         )
 
-    if status not in ["承認", "却下"]:
+    if application.user_id != update.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Not your application",
+        )
+
+    if application.status != "申請中":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot edit after admin decision",
+        )
+
+    if update.available_people < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Available people must be at least 1",
+        )
+
+    application.available_people = update.available_people
+
+    db.commit()
+    db.refresh(application)
+
+    return application
+
+
+# =========================
+# 管理者による承認・却下
+# =========================
+
+@router.put("/{application_id}/status")
+def update_date_application_status(
+    application_id: int,
+    decision: schemas.DateApplicationDecision,
+    db: Session = Depends(get_db),
+):
+    application = (
+        db.query(models.DateApplication)
+        .filter(
+            models.DateApplication.id == application_id
+        )
+        .first()
+    )
+
+    if application is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Date application not found",
+        )
+
+    if decision.status not in ["承認", "却下"]:
         raise HTTPException(
             status_code=400,
             detail="Status must be 承認 or 却下",
         )
 
-    application.status = status
+    if decision.status == "承認":
+        if decision.confirmed_people < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Confirmed people must be at least 1",
+            )
+
+        if decision.confirmed_people > application.available_people:
+            raise HTTPException(
+                status_code=400,
+                detail="Confirmed people cannot exceed available people",
+            )
+
+        application.status = "承認"
+        application.confirmed_people = decision.confirmed_people
+
+    else:
+        application.status = "却下"
+        application.confirmed_people = 0
+
+    db.commit()
+    db.refresh(application)
+
+    return application
+
+
+# =========================
+# 承認後の確定人数変更（管理者）
+# =========================
+
+@router.put("/{application_id}/confirmed-people")
+def update_confirmed_people(
+    application_id: int,
+    confirmed_people: int,
+    db: Session = Depends(get_db),
+):
+    application = (
+        db.query(models.DateApplication)
+        .filter(
+            models.DateApplication.id == application_id
+        )
+        .first()
+    )
+
+    if application is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Date application not found",
+        )
+
+    if application.status != "承認":
+        raise HTTPException(
+            status_code=400,
+            detail="Only approved applications can be changed",
+        )
+
+    if confirmed_people < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmed people must be at least 1",
+        )
+
+    if confirmed_people > application.available_people:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmed people cannot exceed available people",
+        )
+
+    application.confirmed_people = confirmed_people
 
     db.commit()
     db.refresh(application)

@@ -25,21 +25,19 @@ type DateApplication = {
   date: string;
   user_id: number;
   status: string;
-  user: User;
-};
-
-type Assignment = {
-  id: number;
-  job_id: number;
-  user_id: number;
+  available_people: number;
+  confirmed_people: number;
   user: User;
 };
 
 export default function ApplicationsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<DateApplication[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
+  const [confirmedCounts, setConfirmedCounts] = useState<{
+    [key: number]: number;
+  }>({});
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -51,22 +49,31 @@ export default function ApplicationsPage() {
 
   const loadData = async () => {
     try {
-      const [
-        jobsResponse,
-        applicationsResponse,
-        assignmentsResponse,
-      ] = await Promise.all([
-        axios.get(`${API_URL}/jobs`),
-        axios.get(`${API_URL}/date-applications`),
-        axios.get(`${API_URL}/assignments`),
-      ]);
+      setLoading(true);
+
+      const [jobsResponse, applicationsResponse] =
+        await Promise.all([
+          axios.get(`${API_URL}/jobs`),
+          axios.get(`${API_URL}/date-applications`),
+        ]);
 
       setJobs(jobsResponse.data);
       setApplications(applicationsResponse.data);
-      setAssignments(assignmentsResponse.data);
+
+      const counts: { [key: number]: number } = {};
+
+      applicationsResponse.data.forEach(
+        (application: DateApplication) => {
+          counts[application.id] = application.confirmed_people;
+        }
+      );
+
+      setConfirmedCounts(counts);
     } catch (error) {
       console.error(error);
       alert("データの取得に失敗しました");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -78,12 +85,51 @@ export default function ApplicationsPage() {
     applicationId: number,
     status: string
   ) => {
+    const application = applications.find(
+      (item) => item.id === applicationId
+    );
+
+    if (!application) return;
+
+    let confirmedPeople = 0;
+
+    if (status === "承認") {
+      confirmedPeople =
+        confirmedCounts[applicationId] ?? 0;
+
+      if (
+        confirmedPeople < 1 ||
+        confirmedPeople > application.available_people
+      ) {
+        alert(
+          `確定人数は1人以上、参加可能人数（${application.available_people}人）以下にしてください。`
+        );
+        return;
+      }
+
+      if (
+        !confirm(
+          `${application.user.company}に${confirmedPeople}人の依頼を確定しますか？`
+        )
+      ) {
+        return;
+      }
+    } else {
+      if (
+        !confirm(
+          `${application.user.company}には今回は依頼しないことでよろしいですか？`
+        )
+      ) {
+        return;
+      }
+    }
+
     try {
       await axios.put(
         `${API_URL}/date-applications/${applicationId}/status`,
-        null,
         {
-          params: { status },
+          status,
+          confirmed_people: confirmedPeople,
         }
       );
 
@@ -91,8 +137,8 @@ export default function ApplicationsPage() {
 
       alert(
         status === "承認"
-          ? "日付申請を承認しました"
-          : "日付申請を却下しました"
+          ? "依頼人数を確定しました"
+          : "今回は依頼しないことにしました"
       );
     } catch (error) {
       console.error(error);
@@ -101,46 +147,47 @@ export default function ApplicationsPage() {
   };
 
   // =========================
-  // 案件への担当者割り当て
+  // 承認後の確定人数変更
   // =========================
 
-  const createAssignment = async (
-    jobId: number,
-    userId: number
+  const updateConfirmedPeople = async (
+    applicationId: number
   ) => {
-    try {
-      await axios.post(`${API_URL}/assignments`, {
-        job_id: jobId,
-        user_id: userId,
-      });
+    const application = applications.find(
+      (item) => item.id === applicationId
+    );
 
-      await loadData();
-      alert("担当者を割り当てました");
-    } catch (error) {
-      console.error(error);
-      alert("割り当てに失敗しました");
-    }
-  };
+    if (!application) return;
 
-  // =========================
-  // 割り当て解除
-  // =========================
+    const confirmedPeople =
+      confirmedCounts[applicationId] ?? 0;
 
-  const deleteAssignment = async (assignmentId: number) => {
-    if (!confirm("この担当者の割り当てを解除しますか？")) {
+    if (
+      confirmedPeople < 1 ||
+      confirmedPeople > application.available_people
+    ) {
+      alert(
+        `確定人数は1人以上、参加可能人数（${application.available_people}人）以下にしてください。`
+      );
       return;
     }
 
     try {
-      await axios.delete(
-        `${API_URL}/assignments/${assignmentId}`
+      await axios.put(
+        `${API_URL}/date-applications/${applicationId}/confirmed-people`,
+        null,
+        {
+          params: {
+            confirmed_people: confirmedPeople,
+          },
+        }
       );
 
       await loadData();
-      alert("割り当てを解除しました");
+      alert("確定人数を変更しました");
     } catch (error) {
       console.error(error);
-      alert("割り当て解除に失敗しました");
+      alert("確定人数の変更に失敗しました");
     }
   };
 
@@ -166,12 +213,6 @@ export default function ApplicationsPage() {
     );
   };
 
-  const getAssignmentsByJob = (jobId: number) => {
-    return assignments.filter(
-      (assignment) => assignment.job_id === jobId
-    );
-  };
-
   const pendingCount = applications.filter(
     (application) => application.status === "申請中"
   ).length;
@@ -188,11 +229,11 @@ export default function ApplicationsPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">
-              日付別参加申請・担当者割り当て
+              日付別参加申請・人数管理
             </h1>
 
             <p className="mt-2 text-gray-600">
-              日付申請を承認し、各案件に担当者を割り当てます。
+              会社ごとの参加可能人数を確認し、依頼人数を確定します。
             </p>
           </div>
 
@@ -224,7 +265,9 @@ export default function ApplicationsPage() {
           <div className="flex flex-wrap gap-3">
             <select
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={(e) =>
+                setSelectedDate(e.target.value)
+              }
               className="min-w-[220px] rounded-lg border p-3"
             >
               <option value="">すべての日付</option>
@@ -238,9 +281,10 @@ export default function ApplicationsPage() {
 
             <button
               onClick={loadData}
-              className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+              disabled={loading}
+              className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              更新
+              {loading ? "更新中..." : "更新"}
             </button>
           </div>
         </div>
@@ -256,33 +300,107 @@ export default function ApplicationsPage() {
           <div className="space-y-6">
             {datesToShow.map((date) => {
               const dayJobs = getJobsByDate(date);
-              const dayApplications = getApplicationsByDate(date);
+              const dayApplications =
+                getApplicationsByDate(date);
 
-              const approvedApplicants = dayApplications.filter(
-                (application) => application.status === "承認"
-              );
+              const approvedApplications =
+                dayApplications.filter(
+                  (application) =>
+                    application.status === "承認"
+                );
+
+              const totalAvailable =
+                dayApplications.reduce(
+                  (sum, application) =>
+                    sum + application.available_people,
+                  0
+                );
+
+              const totalConfirmed =
+                approvedApplications.reduce(
+                  (sum, application) =>
+                    sum + application.confirmed_people,
+                  0
+                );
 
               return (
                 <section
                   key={date}
                   className="rounded-lg bg-white p-6 shadow"
                 >
+                  {/* 日付ヘッダー */}
                   <div className="mb-5 border-b pb-4">
                     <h2 className="text-2xl font-bold">
                       {date}
                     </h2>
 
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-2 text-sm text-gray-500">
                       案件 {dayJobs.length}件 /
-                      申請 {dayApplications.length}件 /
-                      承認済み {approvedApplicants.length}人
+                      申請 {dayApplications.length}社
                     </p>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg bg-gray-50 p-4">
+                        <p className="text-sm text-gray-500">
+                          参加可能人数
+                        </p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {totalAvailable}人
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-green-50 p-4">
+                        <p className="text-sm text-gray-500">
+                          依頼確定人数
+                        </p>
+                        <p className="mt-1 text-2xl font-bold text-green-700">
+                          {totalConfirmed}人
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-blue-50 p-4">
+                        <p className="text-sm text-gray-500">
+                          承認待ち
+                        </p>
+                        <p className="mt-1 text-2xl font-bold text-blue-700">
+                          {
+                            dayApplications.filter(
+                              (application) =>
+                                application.status === "申請中"
+                            ).length
+                          }社
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* 申請者一覧 */}
+                  {/* 案件一覧 */}
                   <div className="mb-6">
                     <h3 className="mb-3 font-bold">
-                      参加申請者
+                      当日の案件
+                    </h3>
+
+                    <div className="space-y-2">
+                      {dayJobs.map((job) => (
+                        <div
+                          key={job.id}
+                          className="rounded-lg bg-gray-50 p-4"
+                        >
+                          <p className="font-semibold">
+                            {job.customer}
+                          </p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            {job.work}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 会社ごとの申請 */}
+                  <div className="border-t pt-5">
+                    <h3 className="mb-4 text-xl font-bold">
+                      会社ごとの参加申請
                     </h3>
 
                     {dayApplications.length === 0 ? (
@@ -290,200 +408,191 @@ export default function ApplicationsPage() {
                         この日の申請者はいません。
                       </p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {dayApplications.map((application) => (
                           <div
                             key={application.id}
-                            className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4"
+                            className="rounded-lg border p-5"
                           >
-                            <div>
-                              <p className="font-bold">
-                                {application.user?.name ?? "不明"}
-                              </p>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-lg font-bold">
+                                  {application.user?.company ??
+                                    "会社不明"}
+                                </p>
 
-                              <p className="text-sm text-gray-500">
-                                {application.user?.company ?? "会社不明"}
-                              </p>
+                                <p className="text-sm text-gray-500">
+                                  申請担当者：
+                                  {application.user?.name ?? "不明"}
+                                </p>
+                              </div>
 
-                              <p className="mt-2 text-sm">
-                                状態：{application.status}
-                              </p>
+                              {application.status === "申請中" && (
+                                <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700">
+                                  承認待ち
+                                </span>
+                              )}
+
+                              {application.status === "承認" && (
+                                <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-700">
+                                  依頼確定
+                                </span>
+                              )}
+
+                              {application.status === "却下" && (
+                                <span className="rounded-full bg-red-100 px-4 py-2 text-sm font-semibold text-red-700">
+                                  今回は依頼なし
+                                </span>
+                              )}
                             </div>
 
-                            {application.status === "申請中" && (
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() =>
-                                    updateApplicationStatus(
-                                      application.id,
-                                      "承認"
-                                    )
-                                  }
-                                  className="rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
-                                >
-                                  承認
-                                </button>
+                            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="rounded-lg bg-gray-50 p-4">
+                                <p className="text-sm text-gray-500">
+                                  参加可能人数
+                                </p>
+                                <p className="mt-1 text-2xl font-bold">
+                                  {application.available_people}人
+                                </p>
+                              </div>
 
-                                <button
-                                  onClick={() =>
-                                    updateApplicationStatus(
-                                      application.id,
-                                      "却下"
-                                    )
-                                  }
-                                  className="rounded-lg bg-red-500 px-4 py-2 font-semibold text-white hover:bg-red-600"
-                                >
-                                  却下
-                                </button>
+                              <div className="rounded-lg bg-green-50 p-4">
+                                <p className="text-sm text-gray-500">
+                                  確定人数
+                                </p>
+                                <p className="mt-1 text-2xl font-bold text-green-700">
+                                  {application.confirmed_people}人
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* 承認待ち */}
+                            {application.status === "申請中" && (
+                              <div className="mt-5 border-t pt-4">
+                                <label className="mb-2 block font-semibold">
+                                  依頼する人数
+                                </label>
+
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={application.available_people}
+                                    value={
+                                      confirmedCounts[
+                                        application.id
+                                      ] ?? ""
+                                    }
+                                    onChange={(e) =>
+                                      setConfirmedCounts(
+                                        (prev) => ({
+                                          ...prev,
+                                          [application.id]:
+                                            Number(e.target.value),
+                                        })
+                                      )
+                                    }
+                                    className="w-28 rounded-lg border p-3"
+                                  />
+
+                                  <span className="text-sm text-gray-500">
+                                    人（最大
+                                    {application.available_people}
+                                    人）
+                                  </span>
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                  <button
+                                    onClick={() =>
+                                      updateApplicationStatus(
+                                        application.id,
+                                        "承認"
+                                      )
+                                    }
+                                    className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
+                                  >
+                                    依頼確定
+                                  </button>
+
+                                  <button
+                                    onClick={() =>
+                                      updateApplicationStatus(
+                                        application.id,
+                                        "却下"
+                                      )
+                                    }
+                                    className="rounded-lg bg-red-500 px-5 py-3 font-semibold text-white hover:bg-red-600"
+                                  >
+                                    今回は依頼しない
+                                  </button>
+                                </div>
                               </div>
                             )}
 
+                            {/* 承認後の人数変更 */}
                             {application.status === "承認" && (
-                              <span className="rounded-full bg-green-100 px-4 py-2 text-green-700">
-                                承認済み
-                              </span>
+                              <div className="mt-5 border-t pt-4">
+                                <label className="mb-2 block font-semibold">
+                                  確定人数の変更
+                                </label>
+
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={application.available_people}
+                                    value={
+                                      confirmedCounts[
+                                        application.id
+                                      ] ?? application.confirmed_people
+                                    }
+                                    onChange={(e) =>
+                                      setConfirmedCounts(
+                                        (prev) => ({
+                                          ...prev,
+                                          [application.id]:
+                                            Number(e.target.value),
+                                        })
+                                      )
+                                    }
+                                    className="w-28 rounded-lg border p-3"
+                                  />
+
+                                  <span className="text-sm text-gray-500">
+                                    人
+                                  </span>
+
+                                  <button
+                                    onClick={() =>
+                                      updateConfirmedPeople(
+                                        application.id
+                                      )
+                                    }
+                                    className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+                                  >
+                                    人数を変更
+                                  </button>
+                                </div>
+                              </div>
                             )}
 
+                            {/* 却下後 */}
                             {application.status === "却下" && (
-                              <span className="rounded-full bg-red-100 px-4 py-2 text-red-700">
-                                却下
-                              </span>
+                              <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                                この会社への依頼はありません。確定人数は0人です。
+                              </p>
                             )}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-
-                  {/* 案件ごとの担当者割り当て */}
-                  <div className="border-t pt-5">
-                    <h3 className="mb-4 text-xl font-bold">
-                      案件ごとの担当者割り当て
-                    </h3>
-
-                    {dayJobs.map((job) => {
-                      const jobAssignments = getAssignmentsByJob(job.id);
-
-                      const availableApplicants =
-                        approvedApplicants.filter(
-                          (application) =>
-                            !jobAssignments.some(
-                              (assignment) =>
-                                assignment.user_id === application.user_id
-                            )
-                        );
-
-                      return (
-                        <div
-                          key={job.id}
-                          className="mb-5 rounded-lg border p-5"
-                        >
-                          <h4 className="text-lg font-bold">
-                            {job.customer}
-                          </h4>
-
-                          <p className="mt-1 text-sm text-gray-600">
-                            {job.work}
-                          </p>
-
-                          {/* 割り当て済み担当者 */}
-                          <div className="mt-4">
-                            <p className="mb-2 font-semibold">
-                              割り当て済み担当者
-                            </p>
-
-                            {jobAssignments.length === 0 ? (
-                              <p className="text-sm text-gray-500">
-                                まだ割り当てられていません。
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                {jobAssignments.map((assignment) => (
-                                  <div
-                                    key={assignment.id}
-                                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-green-50 p-3"
-                                  >
-                                    <div>
-                                      <p className="font-semibold text-green-800">
-                                        {assignment.user?.name ?? "不明"}
-                                      </p>
-
-                                      <p className="text-sm text-green-700">
-                                        {assignment.user?.company ?? "会社不明"}
-                                      </p>
-                                    </div>
-
-                                    <button
-                                      onClick={() =>
-                                        deleteAssignment(assignment.id)
-                                      }
-                                      className="text-sm text-red-600 underline"
-                                    >
-                                      割り当て解除
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* 新規割り当て */}
-                          <div className="mt-5 border-t pt-4">
-                            <p className="mb-3 font-semibold">
-                              承認済み外注から担当者を追加
-                            </p>
-
-                            {approvedApplicants.length === 0 ? (
-                              <p className="text-sm text-gray-500">
-                                この日の承認済み申請者はいません。
-                              </p>
-                            ) : availableApplicants.length === 0 ? (
-                              <p className="text-sm text-gray-500">
-                                承認済み申請者は全員割り当て済みです。
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                {availableApplicants.map((application) => (
-                                  <div
-                                    key={application.id}
-                                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-3"
-                                  >
-                                    <div>
-                                      <p className="font-semibold">
-                                        {application.user?.name ?? "不明"}
-                                      </p>
-
-                                      <p className="text-sm text-gray-500">
-                                        {application.user?.company ?? "会社不明"}
-                                      </p>
-                                    </div>
-
-                                    <button
-                                      onClick={() =>
-                                        createAssignment(
-                                          job.id,
-                                          application.user_id
-                                        )
-                                      }
-                                      className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700"
-                                    >
-                                      この案件に割り当て
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
                 </section>
               );
             })}
           </div>
         )}
-
       </div>
     </main>
   );

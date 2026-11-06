@@ -21,18 +21,8 @@ type DateApplication = {
   date: string;
   user_id: number;
   status: string;
-  user: {
-    id: number;
-    company: string;
-    name: string;
-    role: string;
-  };
-};
-
-type Assignment = {
-  id: number;
-  job_id: number;
-  user_id: number;
+  available_people: number;
+  confirmed_people: number;
   user: {
     id: number;
     company: string;
@@ -61,9 +51,12 @@ type PendingUser = {
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dateApplications, setDateApplications] = useState<DateApplication[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
+
+  const [confirmedPeopleInputs, setConfirmedPeopleInputs] = useState<
+    Record<number, string>
+  >({});
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
@@ -92,8 +85,6 @@ export default function Home() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
-
-  // カレンダーで選択した日付
   const [selectedDate, setSelectedDate] = useState("");
 
   // =========================
@@ -136,11 +127,10 @@ export default function Home() {
 
   const formatDate = (dateString: string) => {
     const [year, month, day] = dateString.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-
+    const targetDate = new Date(year, month - 1, day);
     const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
 
-    return `${month}月${day}日（${weekdays[date.getDay()]}）`;
+    return `${month}月${day}日（${weekdays[targetDate.getDay()]}）`;
   };
 
   const getDateColor = (dateString: string) => {
@@ -195,13 +185,11 @@ export default function Home() {
       const [
         jobsResponse,
         dateApplicationsResponse,
-        assignmentsResponse,
         personalEventsResponse,
         pendingUsersResponse,
       ] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
         axios.get(`${API_URL}/date-applications`),
-        axios.get(`${API_URL}/assignments`),
         axios.get(`${API_URL}/personal-events/`, {
           params: { user_id: userId },
         }),
@@ -210,9 +198,22 @@ export default function Home() {
 
       setJobs(jobsResponse.data);
       setDateApplications(dateApplicationsResponse.data);
-      setAssignments(assignmentsResponse.data);
       setPersonalEvents(personalEventsResponse.data);
       setPendingUsers(pendingUsersResponse.data);
+
+      const inputs: Record<number, string> = {};
+
+      dateApplicationsResponse.data.forEach(
+        (application: DateApplication) => {
+          inputs[application.id] = String(
+            application.status === "承認"
+              ? application.confirmed_people
+              : application.available_people
+          );
+        }
+      );
+
+      setConfirmedPeopleInputs(inputs);
     } catch (error) {
       console.error(error);
       alert("データの読み込みに失敗しました");
@@ -261,14 +262,15 @@ export default function Home() {
 
   const updateDateApplicationStatus = async (
     applicationId: number,
-    newStatus: string
+    newStatus: string,
+    confirmedPeople: number = 0
   ) => {
     try {
       await axios.put(
         `${API_URL}/date-applications/${applicationId}/status`,
-        null,
         {
-          params: { status: newStatus },
+          status: newStatus,
+          confirmed_people: confirmedPeople,
         }
       );
 
@@ -276,8 +278,8 @@ export default function Home() {
 
       alert(
         newStatus === "承認"
-          ? "参加申請を承認しました"
-          : "参加申請を却下しました"
+          ? `${confirmedPeople}人で参加依頼を確定しました`
+          : "今回は参加依頼をしないことにしました"
       );
     } catch (error) {
       console.error(error);
@@ -286,53 +288,42 @@ export default function Home() {
   };
 
   // =========================
-  // 案件ごとの担当者割り当て
+  // 承認後の確定人数変更
   // =========================
 
-  const createAssignment = async (
-    jobId: number,
-    targetUserId: number
-  ) => {
-    try {
-      await axios.post(`${API_URL}/assignments`, {
-        job_id: jobId,
-        user_id: targetUserId,
-      });
+  const updateConfirmedPeople = async (application: DateApplication) => {
+    const confirmedPeople = Number(
+      confirmedPeopleInputs[application.id]
+    );
 
-      await loadData();
-      alert("担当者を割り当てました");
-    } catch (error) {
-      console.error(error);
+    if (
+      !Number.isInteger(confirmedPeople) ||
+      confirmedPeople < 1 ||
+      confirmedPeople > application.available_people
+    ) {
       alert(
-        "担当者の割り当てに失敗しました。申請が承認されているか確認してください。"
+        `確定人数は1人以上、参加可能人数の${application.available_people}人以下で入力してください。`
       );
-    }
-  };
-
-  // =========================
-  // 担当者の割り当て解除
-  // =========================
-
-  const deleteAssignment = async (assignmentId: number) => {
-    if (!confirm("この担当者の割り当てを解除しますか？")) {
       return;
     }
 
     try {
-      await axios.delete(`${API_URL}/assignments/${assignmentId}`);
+      await axios.put(
+        `${API_URL}/date-applications/${application.id}/confirmed-people`,
+        null,
+        {
+          params: {
+            confirmed_people: confirmedPeople,
+          },
+        }
+      );
 
       await loadData();
-      alert("担当者の割り当てを解除しました");
+      alert("確定人数を変更しました");
     } catch (error) {
       console.error(error);
-      alert("割り当て解除に失敗しました");
+      alert("確定人数の変更に失敗しました");
     }
-  };
-
-  const getJobAssignments = (jobId: number) => {
-    return assignments.filter(
-      (assignment) => assignment.job_id === jobId
-    );
   };
 
   // =========================
@@ -420,7 +411,6 @@ export default function Home() {
     return acc;
   }, {} as Record<string, Job[]>);
 
-  // 選択した日の案件
   const selectedDayJobs = selectedDate
     ? jobs.filter(
         (job) =>
@@ -435,14 +425,8 @@ export default function Home() {
       )
     : [];
 
-  // 選択した日の参加申請
   const selectedDateApplications = dateApplications.filter(
     (application) => application.date === selectedDate
-  );
-
-  // 選択した日の承認済み申請
-  const approvedApplicants = selectedDateApplications.filter(
-    (application) => application.status === "承認"
   );
 
   // =========================
@@ -474,6 +458,8 @@ export default function Home() {
     try {
       await axios.delete(`${API_URL}/jobs/${jobId}`);
       await loadData();
+      setIsOpen(false);
+      setEditingJob(null);
     } catch (error) {
       console.error(error);
       alert("削除に失敗しました");
@@ -485,6 +471,11 @@ export default function Home() {
   // =========================
 
   const handleSubmit = async () => {
+    if (!date || !customer.trim() || !work.trim()) {
+      alert("日付・顧客・作業内容を入力してください");
+      return;
+    }
+
     try {
       const jobData = {
         date,
@@ -583,9 +574,7 @@ export default function Home() {
         発電機保守管理システム
       </h1>
 
-      {/* =========================
-          外注ユーザー承認
-      ========================= */}
+      {/* 外注ユーザー承認 */}
 
       <div className="mb-8 rounded-lg bg-white p-6 shadow">
         <h2 className="mb-4 text-2xl font-bold">
@@ -639,9 +628,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* =========================
-          月・年切り替え
-      ========================= */}
+      {/* 月・年切り替え */}
 
       <div className="mb-8">
         <div className="mb-6 flex items-center justify-center gap-4">
@@ -730,9 +717,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* =========================
-          個人予定
-      ========================= */}
+      {/* 個人予定 */}
 
       <div className="mb-6 rounded-lg bg-white p-5 shadow">
         <div className="flex items-center justify-between">
@@ -810,9 +795,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* =========================
-          検索・案件追加
-      ========================= */}
+      {/* 検索・案件追加 */}
 
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <input
@@ -849,9 +832,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ==================================================
-          一覧表示
-      ================================================== */}
+      {/* 一覧表示 */}
 
       {viewMode === "list" && (
         <div className="space-y-10">
@@ -893,28 +874,13 @@ export default function Home() {
                         >
                           <td className="p-4">{job.customer}</td>
                           <td className="p-4">{job.work}</td>
-
                           <td className="p-4">
-                            <div>{job.technician || "未設定"}</div>
-                            {getJobAssignments(job.id).map((assignment) => (
-                              <div
-                                key={assignment.id}
-                                className="mt-1 text-sm text-green-700"
-                              >
-                                {assignment.user.name}
-                                <span className="ml-1 text-gray-500">
-                                  ({assignment.user.company})
-                                </span>
-                              </div>
-                            ))}
+                            {job.technician || "未設定"}
                           </td>
-
                           <td className="p-4">
                             {job.contractor || "未設定"}
                           </td>
-
                           <td className="p-4">{job.status}</td>
-
                           <td className="p-4 text-center">
                             <button
                               onClick={() => openEditModal(job)}
@@ -941,9 +907,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ==================================================
-          全体カレンダー
-      ================================================== */}
+      {/* 全体カレンダー */}
 
       {viewMode === "calendar" && (
         <div className="rounded-lg bg-white p-6 shadow">
@@ -1008,12 +972,8 @@ export default function Home() {
                             onClick={() => setSelectedDate(dateString)}
                             className="w-full rounded p-1 hover:bg-blue-100"
                           >
-                            <div className="font-bold">
-                              {day}日
-                            </div>
-                            <div className="text-xs">
-                              （{weekday}）
-                            </div>
+                            <div className="font-bold">{day}日</div>
+                            <div className="text-xs">（{weekday}）</div>
                             {hasJobs && (
                               <div className="mt-1 text-xs font-bold text-blue-700">
                                 案件あり
@@ -1088,21 +1048,9 @@ export default function Home() {
                                       <div className="font-bold">
                                         {job.work || "作業予定"}
                                       </div>
-
                                       <div className="mt-1">
                                         担当：{job.technician || "未設定"}
                                       </div>
-
-                                      {getJobAssignments(job.id).map(
-                                        (assignment) => (
-                                          <div
-                                            key={assignment.id}
-                                            className="mt-1 text-green-700"
-                                          >
-                                            割当：{assignment.user.name}
-                                          </div>
-                                        )
-                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -1116,6 +1064,7 @@ export default function Home() {
                 })()}
 
                 {/* 管理者の個人予定 */}
+
                 <tr>
                   <td className="sticky left-0 z-10 border border-gray-300 bg-green-100 p-3 font-bold">
                     管理者の予定
@@ -1187,24 +1136,15 @@ export default function Home() {
               <span className="mr-1 inline-block h-3 w-3 rounded border border-red-200 bg-red-50" />
               日曜日
             </div>
-
             <div>
               <span className="mr-1 inline-block h-3 w-3 rounded border border-blue-200 bg-blue-50" />
               土曜日
             </div>
-
-            <div>
-              案件をクリック → 編集
-            </div>
-
-            <div>
-              日付をクリック → 下に案件一覧を表示
-            </div>
+            <div>案件をクリック → 編集</div>
+            <div>日付をクリック → 下に案件一覧を表示</div>
           </div>
 
-          {/* ==================================================
-              選択した日の案件・申請・割り当て
-          ================================================== */}
+          {/* 選択した日の案件・参加申請 */}
 
           <div className="mt-8 border-t-4 border-blue-500 pt-6">
             {!selectedDate ? (
@@ -1224,7 +1164,7 @@ export default function Home() {
                       {formatDate(selectedDate)} の案件管理
                     </h2>
                     <p className="mt-1 text-sm text-gray-500">
-                      参加申請の承認と、案件ごとの担当者割り当てができます。
+                      参加可能人数を確認し、必要な人数を確定できます。
                     </p>
                   </div>
 
@@ -1245,238 +1185,293 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* その日の参加申請 */}
-                <div className="mb-8 rounded-lg border bg-gray-50 p-5">
+                {/* その日の案件 */}
+
+                <div className="mb-8 rounded-lg border bg-white p-5">
                   <h3 className="mb-4 text-xl font-bold">
-                    この日の参加申請
+                    この日の案件
                   </h3>
 
-                  {selectedDateApplications.length === 0 ? (
+                  {selectedDayJobs.length === 0 ? (
                     <p className="text-gray-500">
-                      この日の参加申請はありません。
+                      この日の案件はありません。
                     </p>
                   ) : (
                     <div className="space-y-3">
-                      {selectedDateApplications.map((application) => (
+                      {selectedDayJobs.map((job) => (
                         <div
-                          key={application.id}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4"
+                          key={job.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded border p-4"
                         >
                           <div>
-                            <p className="font-bold">
-                              {application.user.company}
+                            <p className="font-bold">{job.customer}</p>
+                            <p>{job.work}</p>
+                            <p className="mt-1 text-sm text-gray-500">
+                              社内担当者：{job.technician || "未設定"}
                             </p>
-                            <p>{application.user.name}</p>
-                            <p className="mt-1 text-sm text-gray-600">
-                              申請状態：
-                              <span
-                                className={
-                                  application.status === "承認"
-                                    ? "font-bold text-green-700"
-                                    : application.status === "却下"
-                                    ? "font-bold text-red-600"
-                                    : "font-bold text-yellow-700"
-                                }
-                              >
-                                {application.status}
-                              </span>
+                            <p className="text-sm text-gray-500">
+                              外注：{job.contractor || "未設定"}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              状態：{job.status}
                             </p>
                           </div>
 
-                          {application.status === "申請中" && (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() =>
-                                  updateDateApplicationStatus(
-                                    application.id,
-                                    "承認"
-                                  )
-                                }
-                                className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-                              >
-                                承認
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  updateDateApplicationStatus(
-                                    application.id,
-                                    "却下"
-                                  )
-                                }
-                                className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
-                              >
-                                却下
-                              </button>
-                            </div>
-                          )}
-
-                          {application.status === "却下" && (
-                            <span className="text-sm text-red-600">
-                              却下済み
-                            </span>
-                          )}
-
-                          {application.status === "承認" && (
-                            <span className="text-sm font-semibold text-green-700">
-                              案件への割り当てが可能です
-                            </span>
-                          )}
+                          <button
+                            onClick={() => openEditModal(job)}
+                            className="rounded bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
+                          >
+                            案件を編集
+                          </button>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* 案件ごとの割り当て */}
-                <div>
-                  <h3 className="mb-4 text-xl font-bold">
-                    案件ごとの担当者割り当て
+                {/* 参加申請と人数管理 */}
+
+                <div className="rounded-lg border bg-gray-50 p-5">
+                  <h3 className="mb-2 text-xl font-bold">
+                    この日の参加申請・人員管理
                   </h3>
 
-                  {selectedDayJobs.length === 0 ? (
-                    <div className="rounded-lg bg-gray-50 p-8 text-center">
-                      <p className="text-gray-500">
-                        この日の案件はありません。
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-5">
-                      {selectedDayJobs.map((job) => {
-                        const jobAssignments = getJobAssignments(job.id);
+                  <p className="mb-4 text-sm text-gray-600">
+                    各会社の参加可能人数を確認し、実際に依頼する人数を確定してください。
+                  </p>
 
-                        return (
+                  {selectedDateApplications.length === 0 ? (
+                    <p className="text-gray-500">
+                      この日の参加申請はありません。
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mb-4 rounded-lg bg-blue-50 p-4">
+                        <p className="text-sm text-gray-600">
+                          参加可能人数の合計
+                        </p>
+                        <p className="text-2xl font-bold text-blue-800">
+                          {selectedDateApplications.reduce(
+                            (sum, application) =>
+                              sum + application.available_people,
+                            0
+                          )}
+                          人
+                        </p>
+                        <p className="mt-2 text-sm text-gray-600">
+                          確定人数の合計
+                        </p>
+                        <p className="text-2xl font-bold text-green-700">
+                          {selectedDateApplications
+                            .filter((application) => application.status === "承認")
+                            .reduce(
+                              (sum, application) =>
+                                sum + application.confirmed_people,
+                              0
+                            )}
+                          人
+                        </p>
+                      </div>
+
+                      <div className="space-y-4">
+                        {selectedDateApplications.map((application) => (
                           <div
-                            key={job.id}
-                            className="rounded-lg border bg-white p-5 shadow-sm"
+                            key={application.id}
+                            className="rounded-lg border bg-white p-4"
                           >
-                            <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <h4 className="text-lg font-bold">
-                                  {job.customer}
-                                </h4>
-                                <p className="mt-1 text-gray-700">
-                                  {job.work}
+                                <p className="text-lg font-bold">
+                                  {application.user.company}
                                 </p>
-                                <p className="mt-2 text-sm text-gray-500">
-                                  社内担当者：{job.technician || "未設定"}
+                                <p className="text-sm text-gray-600">
+                                  申請者：{application.user.name}
                                 </p>
-                                <p className="text-sm text-gray-500">
-                                  外注：{job.contractor || "未設定"}
+
+                                <p className="mt-2">
+                                  参加可能人数：
+                                  <span className="font-bold">
+                                    {application.available_people}人
+                                  </span>
                                 </p>
-                                <p className="mt-1 text-sm">
-                                  状態：{job.status}
+
+                                <p className="mt-1">
+                                  申請状態：
+                                  <span
+                                    className={
+                                      application.status === "承認"
+                                        ? "font-bold text-green-700"
+                                        : application.status === "却下"
+                                        ? "font-bold text-red-600"
+                                        : "font-bold text-yellow-700"
+                                    }
+                                  >
+                                    {application.status === "承認"
+                                      ? "依頼確定"
+                                      : application.status === "却下"
+                                      ? "今回は依頼なし"
+                                      : "管理者確認待ち"}
+                                  </span>
                                 </p>
+
+                                {application.status === "承認" && (
+                                  <p className="mt-1 text-green-700">
+                                    確定人数：
+                                    <span className="font-bold">
+                                      {application.confirmed_people}人
+                                    </span>
+                                  </p>
+                                )}
                               </div>
 
-                              <button
-                                onClick={() => openEditModal(job)}
-                                className="rounded bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
-                              >
-                                案件を編集
-                              </button>
-                            </div>
+                              {application.status === "申請中" && (
+                                <span className="rounded bg-yellow-100 px-3 py-1 text-sm font-semibold text-yellow-800">
+                                  未処理
+                                </span>
+                              )}
 
-                            {/* 割り当て済み担当者 */}
-                            <div className="mt-4">
-                              <h5 className="mb-2 font-bold text-green-700">
-                                割り当て済み担当者
-                              </h5>
+                              {application.status === "承認" && (
+                                <span className="rounded bg-green-100 px-3 py-1 text-sm font-semibold text-green-800">
+                                  依頼確定
+                                </span>
+                              )}
 
-                              {jobAssignments.length === 0 ? (
-                                <p className="text-sm text-gray-500">
-                                  まだ担当者は割り当てられていません。
-                                </p>
-                              ) : (
-                                <div className="space-y-2">
-                                  {jobAssignments.map((assignment) => (
-                                    <div
-                                      key={assignment.id}
-                                      className="flex flex-wrap items-center justify-between gap-2 rounded border border-green-200 bg-green-50 p-3"
-                                    >
-                                      <div>
-                                        <span className="font-semibold">
-                                          {assignment.user.name}
-                                        </span>
-                                        <span className="ml-2 text-sm text-gray-600">
-                                          {assignment.user.company}
-                                        </span>
-                                      </div>
-
-                                      <button
-                                        onClick={() =>
-                                          deleteAssignment(assignment.id)
-                                        }
-                                        className="text-sm text-red-600 underline hover:text-red-800"
-                                      >
-                                        割り当て解除
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
+                              {application.status === "却下" && (
+                                <span className="rounded bg-red-100 px-3 py-1 text-sm font-semibold text-red-800">
+                                  依頼なし
+                                </span>
                               )}
                             </div>
 
-                            {/* 割り当て可能な外注業者 */}
-                            <div className="mt-5 border-t pt-4">
-                              <h5 className="mb-2 font-bold">
-                                承認済みの参加申請者から割り当て
-                              </h5>
+                            {/* 管理者確認待ち */}
 
-                              {approvedApplicants.length === 0 ? (
-                                <p className="text-sm text-gray-500">
-                                  この日に承認済みの参加申請者はいません。
-                                </p>
-                              ) : (
-                                <div className="space-y-2">
-                                  {approvedApplicants.map((applicant) => {
-                                    const alreadyAssigned =
-                                      jobAssignments.some(
-                                        (assignment) =>
-                                          assignment.user_id === applicant.user_id
+                            {application.status === "申請中" && (
+                              <div className="mt-4 border-t pt-4">
+                                <label className="mb-2 block font-semibold">
+                                  この会社に依頼する人数
+                                </label>
+
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={application.available_people}
+                                    value={
+                                      confirmedPeopleInputs[application.id] ?? ""
+                                    }
+                                    onChange={(e) =>
+                                      setConfirmedPeopleInputs((prev) => ({
+                                        ...prev,
+                                        [application.id]: e.target.value,
+                                      }))
+                                    }
+                                    className="w-28 rounded border p-2"
+                                  />
+
+                                  <span className="text-sm text-gray-500">
+                                    / {application.available_people}人
+                                  </span>
+
+                                  <button
+                                    onClick={() => {
+                                      const people = Number(
+                                        confirmedPeopleInputs[application.id]
                                       );
 
-                                    return (
-                                      <div
-                                        key={applicant.id}
-                                        className="flex flex-wrap items-center justify-between gap-2 rounded border p-3"
-                                      >
-                                        <div>
-                                          <span className="font-semibold">
-                                            {applicant.user.name}
-                                          </span>
-                                          <span className="ml-2 text-sm text-gray-600">
-                                            {applicant.user.company}
-                                          </span>
-                                        </div>
+                                      if (
+                                        !Number.isInteger(people) ||
+                                        people < 1 ||
+                                        people > application.available_people
+                                      ) {
+                                        alert(
+                                          `1人以上${application.available_people}人以下で入力してください。`
+                                        );
+                                        return;
+                                      }
 
-                                        {alreadyAssigned ? (
-                                          <span className="text-sm font-semibold text-green-700">
-                                            割り当て済み
-                                          </span>
-                                        ) : (
-                                          <button
-                                            onClick={() =>
-                                              createAssignment(
-                                                job.id,
-                                                applicant.user_id
-                                              )
-                                            }
-                                            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
-                                          >
-                                            この案件に割り当て
-                                          </button>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
+                                      updateDateApplicationStatus(
+                                        application.id,
+                                        "承認",
+                                        people
+                                      );
+                                    }}
+                                    className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+                                  >
+                                    この人数で依頼確定
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      if (
+                                        confirm(
+                                          `${application.user.company}には今回は依頼しませんか？`
+                                        )
+                                      ) {
+                                        updateDateApplicationStatus(
+                                          application.id,
+                                          "却下"
+                                        );
+                                      }
+                                    }}
+                                    className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+                                  >
+                                    今回は依頼しない
+                                  </button>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
+
+                            {/* 承認後の人数変更 */}
+
+                            {application.status === "承認" && (
+                              <div className="mt-4 border-t pt-4">
+                                <label className="mb-2 block font-semibold">
+                                  確定人数の変更
+                                </label>
+
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={application.available_people}
+                                    value={
+                                      confirmedPeopleInputs[application.id] ??
+                                      String(application.confirmed_people)
+                                    }
+                                    onChange={(e) =>
+                                      setConfirmedPeopleInputs((prev) => ({
+                                        ...prev,
+                                        [application.id]: e.target.value,
+                                      }))
+                                    }
+                                    className="w-28 rounded border p-2"
+                                  />
+
+                                  <span className="text-sm text-gray-500">
+                                    / {application.available_people}人
+                                  </span>
+
+                                  <button
+                                    onClick={() =>
+                                      updateConfirmedPeople(application)
+                                    }
+                                    className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                                  >
+                                    人数を変更
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {application.status === "却下" && (
+                              <p className="mt-4 border-t pt-3 text-sm text-red-600">
+                                今回は参加依頼をしていません。
+                              </p>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               </>
@@ -1485,9 +1480,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ==================================================
-          案件追加・編集モーダル
-      ================================================== */}
+      {/* 案件追加・編集モーダル */}
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">

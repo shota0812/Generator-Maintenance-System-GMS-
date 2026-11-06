@@ -19,12 +19,8 @@ type DateApplication = {
   date: string;
   user_id: number;
   status: string;
-};
-
-type Assignment = {
-  id: number;
-  job_id: number;
-  user_id: number;
+  available_people: number;
+  confirmed_people: number;
 };
 
 type PersonalEvent = {
@@ -38,7 +34,6 @@ type PersonalEvent = {
 export default function ContractorPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dateApplications, setDateApplications] = useState<DateApplication[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
 
   const [userId, setUserId] = useState<number | null>(null);
@@ -51,6 +46,11 @@ export default function ContractorPage() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
 
   const [selectedDate, setSelectedDate] = useState("");
+
+  const [availablePeople, setAvailablePeople] = useState(1);
+  const [editingPeople, setEditingPeople] = useState<{
+    [key: number]: number;
+  }>({});
 
   const [showPersonalEventForm, setShowPersonalEventForm] = useState(false);
   const [personalEventDate, setPersonalEventDate] = useState("");
@@ -66,12 +66,10 @@ export default function ContractorPage() {
       const [
         jobsResponse,
         applicationsResponse,
-        assignmentsResponse,
         personalEventsResponse,
       ] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
         axios.get(`${API_URL}/date-applications`),
-        axios.get(`${API_URL}/assignments`),
         axios.get(`${API_URL}/personal-events/`, {
           params: {
             user_id: targetUserId,
@@ -80,9 +78,23 @@ export default function ContractorPage() {
       ]);
 
       setJobs(jobsResponse.data);
+
       setDateApplications(applicationsResponse.data);
-      setAssignments(assignmentsResponse.data);
+
       setPersonalEvents(personalEventsResponse.data);
+
+      const counts: { [key: number]: number } = {};
+
+      applicationsResponse.data
+        .filter(
+          (application: DateApplication) =>
+            application.user_id === targetUserId
+        )
+        .forEach((application: DateApplication) => {
+          counts[application.id] = application.available_people;
+        });
+
+      setEditingPeople(counts);
     } catch (error) {
       console.error(error);
       alert("データの取得に失敗しました");
@@ -117,7 +129,7 @@ export default function ContractorPage() {
   }, []);
 
   // =========================
-  // 日付申請
+  // 日付申請取得
   // =========================
 
   const getDateApplication = (date: string) => {
@@ -128,9 +140,21 @@ export default function ContractorPage() {
     );
   };
 
+  // =========================
+  // 新規日付申請
+  // =========================
+
   const applyForDate = async (date: string) => {
     if (userId === null) {
       alert("ログインしてください");
+      return;
+    }
+
+    if (
+      !Number.isInteger(availablePeople) ||
+      availablePeople < 1
+    ) {
+      alert("参加可能人数を1人以上で入力してください");
       return;
     }
 
@@ -138,13 +162,52 @@ export default function ContractorPage() {
       await axios.post(`${API_URL}/date-applications`, {
         date,
         user_id: userId,
+        available_people: availablePeople,
       });
 
       await loadData(userId);
+
       alert(`${date}の参加申請をしました`);
     } catch (error) {
       console.error(error);
-      alert("日付申請に失敗しました。すでに申請済みの可能性があります。");
+      alert("日付申請に失敗しました");
+    }
+  };
+
+  // =========================
+  // 申請中の人数変更
+  // =========================
+
+  const updateApplication = async (
+    application: DateApplication
+  ) => {
+    if (userId === null) return;
+
+    const people = editingPeople[application.id];
+
+    if (
+      !Number.isInteger(people) ||
+      people < 1
+    ) {
+      alert("参加可能人数は1人以上で入力してください");
+      return;
+    }
+
+    try {
+      await axios.put(
+        `${API_URL}/date-applications/${application.id}`,
+        {
+          user_id: userId,
+          available_people: people,
+        }
+      );
+
+      await loadData(userId);
+
+      alert("参加可能人数を変更しました");
+    } catch (error) {
+      console.error(error);
+      alert("人数の変更に失敗しました");
     }
   };
 
@@ -177,6 +240,7 @@ export default function ContractorPage() {
       setShowPersonalEventForm(false);
 
       await loadData(userId);
+
       alert("個人予定を追加しました");
     } catch (error) {
       console.error(error);
@@ -261,23 +325,11 @@ export default function ContractorPage() {
     );
   });
 
-  const jobDates = Array.from(
-    new Set(monthlyJobs.map((job) => job.date))
-  );
-
   const selectedDateJobs = jobs.filter(
     (job) =>
       job.date === selectedDate &&
       (job.status === "予定" || job.status === "確定")
   );
-
-  const myAssignments = assignments
-    .filter((assignment) => assignment.user_id === userId)
-    .map((assignment) => ({
-      assignment,
-      job: jobs.find((job) => job.id === assignment.job_id),
-    }))
-    .filter((item) => item.job !== undefined);
 
   const myDateApplications = dateApplications
     .filter((application) => application.user_id === userId)
@@ -305,7 +357,7 @@ export default function ContractorPage() {
         </h1>
 
         <p className="mb-8 text-gray-600">
-          参加可能な日付を選択して、一括で参加申請できます。
+          参加可能な日付を選択して、参加可能人数を申請できます。
         </p>
 
         {/* 月切り替え */}
@@ -357,6 +409,7 @@ export default function ContractorPage() {
 
             {Array.from({ length: daysInMonth }).map((_, index) => {
               const day = index + 1;
+
               const dateString =
                 `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
@@ -391,17 +444,19 @@ export default function ContractorPage() {
                   )}
 
                   {application && (
-                    <div className={`mt-2 rounded px-1 py-1 text-center text-[10px] ${
-                      application.status === "承認"
-                        ? "bg-green-100 text-green-700"
-                        : application.status === "却下"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-yellow-100 text-yellow-700"
-                    }`}>
+                    <div
+                      className={`mt-2 rounded px-1 py-1 text-center text-[10px] ${
+                        application.status === "承認"
+                          ? "bg-green-100 text-green-700"
+                          : application.status === "却下"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
                       {application.status === "承認"
-                        ? "承認済み"
+                        ? "依頼確定"
                         : application.status === "却下"
-                        ? "却下"
+                        ? "依頼なし"
                         : "申請中"}
                     </div>
                   )}
@@ -447,38 +502,126 @@ export default function ContractorPage() {
 
             {selectedDateJobs.length > 0 && (
               <div className="border-t pt-5">
+
+                {/* 新規申請 */}
                 {!selectedApplication && (
-                  <button
-                    onClick={() => applyForDate(selectedDate)}
-                    className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
-                  >
-                    この日の参加を申請する
-                  </button>
-                )}
-
-                {selectedApplication?.status === "申請中" && (
-                  <span className="rounded-lg bg-yellow-100 px-5 py-3 font-semibold text-yellow-700">
-                    申請中
-                  </span>
-                )}
-
-                {selectedApplication?.status === "承認" && (
-                  <span className="rounded-lg bg-green-100 px-5 py-3 font-semibold text-green-700">
-                    参加承認済み
-                  </span>
-                )}
-
-                {selectedApplication?.status === "却下" && (
                   <div>
-                    <p className="mb-3 text-red-600">
-                      この日の申請は却下されました。
-                    </p>
+                    <label className="mb-2 block font-semibold">
+                      参加可能人数
+                    </label>
+
+                    <div className="mb-4 flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        value={availablePeople}
+                        onChange={(e) =>
+                          setAvailablePeople(Number(e.target.value))
+                        }
+                        className="w-28 rounded-lg border p-3"
+                      />
+                      <span>人</span>
+                    </div>
+
                     <button
                       onClick={() => applyForDate(selectedDate)}
                       className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
                     >
-                      再申請する
+                      この日の参加を申請する
                     </button>
+                  </div>
+                )}
+
+                {/* 申請中 */}
+                {selectedApplication?.status === "申請中" && (
+                  <div className="rounded-lg bg-yellow-50 p-5">
+                    <p className="font-bold text-yellow-800">
+                      管理者の確認待ちです
+                    </p>
+
+                    <p className="mt-2 text-sm text-gray-700">
+                      現在の参加可能人数：
+                      {selectedApplication.available_people}人
+                    </p>
+
+                    <label className="mb-2 mt-4 block font-semibold">
+                      参加可能人数の変更
+                    </label>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        value={
+                          editingPeople[selectedApplication.id] ??
+                          selectedApplication.available_people
+                        }
+                        onChange={(e) =>
+                          setEditingPeople((prev) => ({
+                            ...prev,
+                            [selectedApplication.id]: Number(e.target.value),
+                          }))
+                        }
+                        className="w-28 rounded-lg border p-3"
+                      />
+
+                      <span>人</span>
+
+                      <button
+                        onClick={() =>
+                          updateApplication(selectedApplication)
+                        }
+                        className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+                      >
+                        人数を変更
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 承認済み */}
+                {selectedApplication?.status === "承認" && (
+                  <div className="rounded-lg bg-green-50 p-5">
+                    <p className="font-bold text-green-800">
+                      参加依頼が確定しました
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg bg-white p-4">
+                        <p className="text-sm text-gray-500">
+                          申請した参加可能人数
+                        </p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {selectedApplication.available_people}人
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-white p-4">
+                        <p className="text-sm text-gray-500">
+                          管理者が確定した依頼人数
+                        </p>
+                        <p className="mt-1 text-2xl font-bold text-green-700">
+                          {selectedApplication.confirmed_people}人
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-sm text-green-800">
+                      確定した人数で参加をお願いします。
+                    </p>
+                  </div>
+                )}
+
+                {/* 却下 */}
+                {selectedApplication?.status === "却下" && (
+                  <div className="rounded-lg bg-red-50 p-5">
+                    <p className="font-bold text-red-700">
+                      今回は参加依頼がありません
+                    </p>
+
+                    <p className="mt-2 text-sm text-red-600">
+                      この日は参加する必要はありません。
+                    </p>
                   </div>
                 )}
               </div>
@@ -501,58 +644,44 @@ export default function ContractorPage() {
               {myDateApplications.map((application) => (
                 <div
                   key={application.id}
-                  className="flex items-center justify-between rounded-lg border p-4"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"
                 >
-                  <p className="font-semibold">
-                    {application.date}
-                  </p>
+                  <div>
+                    <p className="font-semibold">
+                      {application.date}
+                    </p>
 
-                  <span className={`rounded-full px-4 py-2 text-sm ${
-                    application.status === "承認"
-                      ? "bg-green-100 text-green-700"
-                      : application.status === "却下"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-yellow-100 text-yellow-700"
-                  }`}>
+                    <p className="mt-1 text-sm text-gray-500">
+                      参加可能：{application.available_people}人
+                    </p>
+
+                    {application.status === "承認" && (
+                      <p className="mt-1 text-sm font-semibold text-green-700">
+                        依頼確定：{application.confirmed_people}人
+                      </p>
+                    )}
+
+                    {application.status === "却下" && (
+                      <p className="mt-1 text-sm text-red-600">
+                        今回は依頼なし
+                      </p>
+                    )}
+                  </div>
+
+                  <span
+                    className={`rounded-full px-4 py-2 text-sm ${
+                      application.status === "承認"
+                        ? "bg-green-100 text-green-700"
+                        : application.status === "却下"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-yellow-100 text-yellow-700"
+                    }`}
+                  >
                     {application.status === "承認"
-                      ? "承認済み"
+                      ? "依頼確定"
                       : application.status === "却下"
-                      ? "却下"
+                      ? "依頼なし"
                       : "申請中"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 割り当てられた案件 */}
-        <div className="mt-8 rounded-lg bg-white p-6 shadow">
-          <h2 className="mb-4 text-xl font-bold">
-            自分に割り当てられた案件
-          </h2>
-
-          {myAssignments.length === 0 ? (
-            <p className="text-gray-500">
-              現在、割り当てられた案件はありません。
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {myAssignments.map(({ assignment, job }) => (
-                <div
-                  key={assignment.id}
-                  className="rounded-lg border p-4"
-                >
-                  <p className="font-bold">
-                    {job!.customer}
-                  </p>
-
-                  <p className="mt-1 text-sm text-gray-600">
-                    {job!.date} / {job!.work}
-                  </p>
-
-                  <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-sm text-green-700">
-                    担当確定
                   </span>
                 </div>
               ))}
@@ -591,7 +720,9 @@ export default function ContractorPage() {
                 <input
                   type="date"
                   value={personalEventDate}
-                  onChange={(e) => setPersonalEventDate(e.target.value)}
+                  onChange={(e) =>
+                    setPersonalEventDate(e.target.value)
+                  }
                   className="w-full rounded border p-3"
                 />
               </div>
@@ -603,7 +734,9 @@ export default function ContractorPage() {
                 <input
                   type="text"
                   value={personalEventTitle}
-                  onChange={(e) => setPersonalEventTitle(e.target.value)}
+                  onChange={(e) =>
+                    setPersonalEventTitle(e.target.value)
+                  }
                   placeholder="例：社内打ち合わせ"
                   className="w-full rounded border p-3"
                 />
@@ -615,7 +748,9 @@ export default function ContractorPage() {
                 </label>
                 <textarea
                   value={personalEventDescription}
-                  onChange={(e) => setPersonalEventDescription(e.target.value)}
+                  onChange={(e) =>
+                    setPersonalEventDescription(e.target.value)
+                  }
                   placeholder="予定の詳細"
                   className="w-full rounded border p-3"
                 />

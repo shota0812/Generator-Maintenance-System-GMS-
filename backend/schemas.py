@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel
 
 
@@ -82,6 +81,17 @@ class Application(BaseModel):
 class DateApplicationCreate(BaseModel):
     date: str
     user_id: int
+    available_people: int
+
+
+class DateApplicationUpdate(BaseModel):
+    user_id: int
+    available_people: int
+
+
+class DateApplicationDecision(BaseModel):
+    status: str
+    confirmed_people: int = 0
 
 
 class DateApplication(BaseModel):
@@ -89,6 +99,8 @@ class DateApplication(BaseModel):
     date: str
     user_id: int
     status: str
+    available_people: int
+    confirmed_people: int
     user: ApplicationUser
 
     class Config:
