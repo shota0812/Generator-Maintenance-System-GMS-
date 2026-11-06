@@ -466,10 +466,10 @@ export default function ContractorPage() {
                       }`}
                     >
                       {application.status === "承認"
-                        ? "依頼確定"
-                        : application.status === "却下"
-                        ? "依頼なし"
-                        : "申請中"}
+  ? `確定${application.confirmed_people}人`
+  : application.status === "却下"
+  ? "依頼なし"
+  : `申請中（${application.available_people}人）`}
                     </div>
                   )}
                 </button>

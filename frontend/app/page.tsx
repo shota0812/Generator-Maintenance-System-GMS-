@@ -1063,8 +1063,86 @@ export default function Home() {
                   );
                 })()}
 
-                {/* 管理者の個人予定 */}
+                
 
+{/* 外注会社・確定人数 */}
+
+<tr>
+  <td className="sticky left-0 z-10 border border-gray-300 bg-blue-100 p-3 font-bold">
+    外注・確定人数
+  </td>
+
+  {Array.from(
+    {
+      length: getDaysInMonth(currentYear, currentMonth),
+    },
+    (_, index) => {
+      const day = index + 1;
+      const dateString = getDateString(day);
+
+      const dayApplications = dateApplications.filter(
+        (application) => application.date === dateString
+      );
+
+      const totalConfirmed = dayApplications
+        .filter((application) => application.status === "承認")
+        .reduce(
+          (sum, application) =>
+            sum + application.confirmed_people,
+          0
+        );
+
+      return (
+        <td
+          key={dateString}
+          onClick={() => setSelectedDate(dateString)}
+          className="w-[110px] min-w-[110px] cursor-pointer border border-gray-300 bg-blue-50 p-2 align-top"
+        >
+          <div className="space-y-2">
+            {dayApplications.map((application) => (
+              <div
+                key={application.id}
+                className="rounded border bg-white p-2 text-xs"
+              >
+                <p className="break-words font-bold">
+                  {application.user.company}
+                </p>
+
+                {application.status === "承認" && (
+                  <p className="mt-1 font-bold text-green-700">
+                    確定{application.confirmed_people}人
+                  </p>
+                )}
+
+                {application.status === "申請中" && (
+                  <p className="mt-1 text-yellow-700">
+                    申請中（{application.available_people}人）
+                  </p>
+                )}
+
+                {application.status === "却下" && (
+                  <p className="mt-1 text-red-600">
+                    依頼なし
+                  </p>
+                )}
+              </div>
+            ))}
+
+            {dayApplications.some(
+              (application) => application.status === "承認"
+            ) && (
+              <div className="border-t border-blue-300 pt-1 text-xs font-bold text-blue-800">
+                合計：{totalConfirmed}人
+              </div>
+            )}
+          </div>
+        </td>
+      );
+    }
+  )}
+</tr>
+
+{/* 管理者の個人予定 */}
                 <tr>
                   <td className="sticky left-0 z-10 border border-gray-300 bg-green-100 p-3 font-bold">
                     管理者の予定
