@@ -8,11 +8,9 @@ type Job = {
   date: string;
   customer: string;
   work: string;
-  technician: string;
-  contractor: string;
+  technician: string | null;
+  contractor: string | null;
   status: string;
-  approval_status: string;
-  target_user_ids: number[];
 };
 
 type Application = {
@@ -20,6 +18,18 @@ type Application = {
   job_id: number;
   user_id: number;
   status: string;
+  user: {
+    id: number;
+    company: string;
+    name: string;
+    role: string;
+  };
+};
+
+type Assignment = {
+  id: number;
+  job_id: number;
+  user_id: number;
   user: {
     id: number;
     company: string;
@@ -45,14 +55,6 @@ type PendingUser = {
   approval_status: string;
 };
 
-type User = {
-  id: number;
-  company: string;
-  name: string;
-  role: string;
-  email: string | null;
-  approval_status: string;
-};
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -74,10 +76,9 @@ export default function Home() {
   const [editingJob, setEditingJob] = useState<Job | null>(null);
 
   const [applications, setApplications] = useState<Application[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-const [selectedTargetUserIds, setSelectedTargetUserIds] = useState<number[]>([]);
   const [showPersonalEventForm, setShowPersonalEventForm] = useState(false);
   const [personalEventDate, setPersonalEventDate] = useState("");
   const [personalEventTitle, setPersonalEventTitle] = useState("");
@@ -203,39 +204,42 @@ const [selectedTargetUserIds, setSelectedTargetUserIds] = useState<number[]>([])
   }, [isAuthenticated]);
 
   const loadData = async () => {
-  try {
-    const jobsResponse = await axios.get(
-      "https://gms-backend-iazu.onrender.com/jobs"
-    );
+    try {
+      const jobsResponse = await axios.get(
+        "https://gms-backend-iazu.onrender.com/jobs"
+      );
 
-    const applicationsResponse = await axios.get(
-      "https://gms-backend-iazu.onrender.com/applications"
-    );
+      const applicationsResponse = await axios.get(
+        "https://gms-backend-iazu.onrender.com/applications"
+      );
 
-    const personalEventsResponse = await axios.get(
-      "https://gms-backend-iazu.onrender.com/personal-events/",
-      {
-        params: {
-          user_id: userId,
-        },
-      }
-    );
+      const assignmentsResponse = await axios.get(
+        "https://gms-backend-iazu.onrender.com/assignments"
+      );
 
-    const pendingUsersResponse = await axios.get(
-      "https://gms-backend-iazu.onrender.com/users/pending"
-    );
-    const usersResponse = await axios.get(
-  "https://gms-backend-iazu.onrender.com/users"
-);
-    setJobs(jobsResponse.data);
-    setApplications(applicationsResponse.data);
-    setPersonalEvents(personalEventsResponse.data);
-    setPendingUsers(pendingUsersResponse.data);
-    setUsers(usersResponse.data);
-  } catch (error) {
-    console.error(error);
-  }
-};
+      const personalEventsResponse = await axios.get(
+        "https://gms-backend-iazu.onrender.com/personal-events/",
+        {
+          params: {
+            user_id: userId,
+          },
+        }
+      );
+
+      const pendingUsersResponse = await axios.get(
+        "https://gms-backend-iazu.onrender.com/users/pending"
+      );
+
+      setJobs(jobsResponse.data);
+      setApplications(applicationsResponse.data);
+      setAssignments(assignmentsResponse.data);
+      setPersonalEvents(personalEventsResponse.data);
+      setPendingUsers(pendingUsersResponse.data);
+    } catch (error) {
+      console.error(error);
+      alert("データの読み込みに失敗しました");
+    }
+  };
 
 // 外注ユーザーの承認・却下
 const updateUserApproval = async (
@@ -389,17 +393,54 @@ const deletePersonalEvent = async (eventId: number) => {
 
     return acc;
   }, {} as Record<string, Job[]>);
-
-  // =========================
-  // 承認済み参加者
-  // =========================
-
-  const getApprovedApplications = (jobId: number) => {
-    return applications.filter(
-      (application) =>
-        application.job_id === jobId &&
-        application.status === "承認"
+  const getJobAssignments = (jobId: number) => {
+    return assignments.filter(
+      (assignment) => assignment.job_id === jobId
     );
+  };
+
+  // =========================
+  // 承認済み申請者の割り当て
+  // =========================
+
+  const createAssignment = async (jobId: number, userId: number) => {
+    try {
+      await axios.post(
+        "https://gms-backend-iazu.onrender.com/assignments",
+        {
+          job_id: jobId,
+          user_id: userId,
+        }
+      );
+
+      await loadData();
+      alert("担当者を割り当てました");
+    } catch (error) {
+      console.error(error);
+      alert("担当者の割り当てに失敗しました。すでに割り当て済みか、申請が承認されていない可能性があります。");
+    }
+  };
+
+  // =========================
+  // 担当者の割り当て解除
+  // =========================
+
+  const deleteAssignment = async (assignmentId: number) => {
+    if (!confirm("この担当者の割り当てを解除しますか？")) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `https://gms-backend-iazu.onrender.com/assignments/${assignmentId}`
+      );
+
+      await loadData();
+      alert("担当者の割り当てを解除しました");
+    } catch (error) {
+      console.error(error);
+      alert("割り当て解除に失敗しました");
+    }
   };
 
   // =========================
@@ -412,11 +453,10 @@ const deletePersonalEvent = async (eventId: number) => {
     setDate(job.date);
     setCustomer(job.customer);
     setWork(job.work);
-    setTechnician(job.technician);
-    setContractor(job.contractor);
+    setTechnician(job.technician ?? "");
+    setContractor(job.contractor ?? "");
     setStatus(job.status);
-        setSelectedTargetUserIds(job.target_user_ids ?? []);
-    setIsOpen(true);
+        setIsOpen(true);
   };
 
   // =========================
@@ -453,7 +493,6 @@ const deletePersonalEvent = async (eventId: number) => {
         technician,
         contractor,
         status,
-        target_user_ids: selectedTargetUserIds,
       };
 
       if (editingJob) {
@@ -753,7 +792,6 @@ const deletePersonalEvent = async (eventId: number) => {
           className="w-full rounded border p-3"
         />
       </div>
-
       <div>
         <label className="mb-1 block font-semibold">詳細（任意）</label>
         <textarea
@@ -792,7 +830,6 @@ const deletePersonalEvent = async (eventId: number) => {
         <button
           onClick={() => {
             setEditingJob(null);
-            setSelectedTargetUserIds([]);
             setDate("");
             setCustomer("");
             setWork("");
@@ -815,7 +852,7 @@ const deletePersonalEvent = async (eventId: number) => {
 
       </div>
 
-      
+
 
       {/* ==================================================
           一覧表示
@@ -878,10 +915,6 @@ const deletePersonalEvent = async (eventId: number) => {
                           状態
                         </th>
 
-                        <th className="p-4 text-left">
-                          承認
-                        </th>
-
                         <th className="p-4 text-center">
                           操作
                         </th>
@@ -908,42 +941,28 @@ const deletePersonalEvent = async (eventId: number) => {
                           </td>
 
                           <td className="p-4">
-
-                            {getApprovedApplications(job.id).length === 0 ? (
-
-                              <span>
-                                {job.technician}
-                              </span>
-
-                            ) : (
-
-                              <div>
-
-                                <div>
-                                  {job.technician}
-                                </div>
-
-                                {getApprovedApplications(
-                                  job.id
-                                ).map((application) => (
-
+                            <div>{job.technician || "未設定"}</div>
+                            {getJobAssignments(job.id).length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {getJobAssignments(job.id).map((assignment) => (
                                   <div
-                                    key={application.id}
-                                    className="mt-1 text-sm text-green-700"
+                                    key={assignment.id}
+                                    className="text-sm text-green-700"
                                   >
-                                    参加：
-                                    {application.user.name}
+                                    {assignment.user.name}
                                     <span className="ml-1 text-gray-500">
-                                      ({application.user.company})
+                                      ({assignment.user.company})
                                     </span>
+                                    <button
+                                      onClick={() => deleteAssignment(assignment.id)}
+                                      className="ml-2 text-xs text-red-600 underline"
+                                    >
+                                      割り当て解除
+                                    </button>
                                   </div>
-
                                 ))}
-
                               </div>
-
                             )}
-
                           </td>
 
                           <td className="p-4">
@@ -962,24 +981,6 @@ const deletePersonalEvent = async (eventId: number) => {
                               }`}
                             >
                               {job.status}
-                            </span>
-
-                          </td>
-
-                          <td className="p-4">
-
-                            <span
-                              className={`rounded-full px-3 py-1 text-sm font-medium ${
-                                job.approval_status === "承認"
-                                  ? "bg-green-100 text-green-700"
-                                  : job.approval_status === "申請中"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : job.approval_status === "却下"
-                                  ? "bg-red-100 text-red-700"
-                                  : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {job.approval_status}
                             </span>
 
                           </td>
@@ -1010,7 +1011,7 @@ const deletePersonalEvent = async (eventId: number) => {
 
                       ))}
 
-                    
+
                     {/* 管理者の個人予定 */}
 
 <tr>
@@ -1254,6 +1255,12 @@ const deletePersonalEvent = async (eventId: number) => {
                             外注：{job.contractor}
                           </div>
                         )}
+
+                        {getJobAssignments(job.id).map((assignment) => (
+                          <div key={assignment.id} className="mt-1 text-green-700">
+                            割当：{assignment.user.name}
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -1414,9 +1421,55 @@ const deletePersonalEvent = async (eventId: number) => {
                       {application.status}
                     </p>
 
+                    {application.status === "承認" && (
+                      <p className="mt-2 text-sm text-green-700">
+                        {assignments.some(
+                          (assignment) =>
+                            assignment.job_id === application.job_id &&
+                            assignment.user_id === application.user_id
+                        )
+                          ? "担当者として割り当て済み"
+                          : "承認済み：担当者として割り当て可能"}
+                      </p>
+                    )}
+
                   </div>
 
-                  {application.status === "申請中" && (
+                  <div className="flex flex-wrap gap-2">
+                    {application.status === "承認" &&
+                      !assignments.some(
+                        (assignment) =>
+                          assignment.job_id === application.job_id &&
+                          assignment.user_id === application.user_id
+                      ) && (
+                        <button
+                          onClick={() =>
+                            createAssignment(application.job_id, application.user_id)
+                          }
+                          className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                        >
+                          担当者に割り当て
+                        </button>
+                      )}
+
+                    {application.status === "承認" &&
+                      assignments
+                        .filter(
+                          (assignment) =>
+                            assignment.job_id === application.job_id &&
+                            assignment.user_id === application.user_id
+                        )
+                        .map((assignment) => (
+                          <button
+                            key={assignment.id}
+                            onClick={() => deleteAssignment(assignment.id)}
+                            className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+                          >
+                            割り当て解除
+                          </button>
+                        ))}
+
+                    {application.status === "申請中" && (
 
                     <div className="flex gap-2">
 
@@ -1445,8 +1498,9 @@ const deletePersonalEvent = async (eventId: number) => {
                       </button>
 
                     </div>
+                    )}
 
-                  )}
+                  </div>
 
                 </div>
 
@@ -1538,46 +1592,6 @@ const deletePersonalEvent = async (eventId: number) => {
                 <option>調整中</option>
                 <option>完了</option>
               </select>
-
-              <div>
-  <p className="mb-2 font-semibold">参加対象者</p>
-
-  {users.filter((user) => user.approval_status === "承認済み").length === 0 ? (
-    <p className="text-sm text-gray-500">
-      承認済みのユーザーはいません。
-    </p>
-  ) : (
-    <div className="max-h-40 space-y-2 overflow-y-auto rounded border p-3">
-      {users
-        .filter((user) => user.approval_status === "承認済み")
-        .map((user) => (
-          <label key={user.id} className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={selectedTargetUserIds.includes(user.id)}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedTargetUserIds((prev) => [...prev, user.id]);
-                } else {
-                  setSelectedTargetUserIds((prev) =>
-                    prev.filter((id) => id !== user.id)
-                  );
-                }
-              }}
-            />
-
-            <span>
-              {user.company} / {user.name}
-            </span>
-          </label>
-        ))}
-    </div>
-  )}
-
-  <p className="mt-1 text-xs text-gray-500">
-    選択したユーザーだけが参加申請できます。
-  </p>
-</div>
 
               <button
                 onClick={handleSubmit}
