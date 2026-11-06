@@ -86,21 +86,28 @@ def create_assignment(
             detail="User not found",
         )
 
-    # 承認済み申請か確認
-    application = (
-        db.query(models.Application)
+    # アカウント承認確認
+    if user.approval_status != "承認済み":
+        raise HTTPException(
+            status_code=403,
+            detail="User is not approved",
+        )
+
+    # 案件の日付に対する申請が承認済みか確認
+    date_application = (
+        db.query(models.DateApplication)
         .filter(
-            models.Application.job_id == assignment.job_id,
-            models.Application.user_id == assignment.user_id,
-            models.Application.status == "承認",
+            models.DateApplication.date == job.date,
+            models.DateApplication.user_id == assignment.user_id,
+            models.DateApplication.status == "承認",
         )
         .first()
     )
 
-    if application is None:
+    if date_application is None:
         raise HTTPException(
             status_code=400,
-            detail="Application is not approved",
+            detail="Date application is not approved",
         )
 
     # 二重割り当て防止

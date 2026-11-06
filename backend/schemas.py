@@ -46,7 +46,7 @@ class User(BaseModel):
 
 
 # =========================
-# Application
+# 旧Application（既存データ維持）
 # =========================
 
 class ApplicationCreate(BaseModel):
@@ -67,6 +67,26 @@ class ApplicationUser(BaseModel):
 class Application(BaseModel):
     id: int
     job_id: int
+    user_id: int
+    status: str
+    user: ApplicationUser
+
+    class Config:
+        from_attributes = True
+
+
+# =========================
+# DateApplication（日付単位の申請）
+# =========================
+
+class DateApplicationCreate(BaseModel):
+    date: str
+    user_id: int
+
+
+class DateApplication(BaseModel):
+    id: int
+    date: str
     user_id: int
     status: str
     user: ApplicationUser

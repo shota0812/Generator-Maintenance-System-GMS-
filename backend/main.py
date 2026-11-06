@@ -4,7 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import models
 from database import engine
-from routers import jobs, approval, auth, personal_events, assignments
+from routers import (
+    jobs,
+    approval,
+    auth,
+    personal_events,
+    assignments,
+    date_applications,
+)
 
 
 models.Base.metadata.create_all(bind=engine)
@@ -27,6 +34,7 @@ app.include_router(approval.router)
 app.include_router(auth.router)
 app.include_router(personal_events.router)
 app.include_router(assignments.router)
+app.include_router(date_applications.router)
 
 
 @app.get("/")

@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -16,17 +16,14 @@ class Job(Base):
     technician = Column(String, nullable=True)
     contractor = Column(String, nullable=True)
 
-    # 案件の状態
     status = Column(String, default="予定")
 
-    # 参加申請との関係
     applications = relationship(
         "Application",
         back_populates="job",
         cascade="all, delete-orphan",
     )
 
-    # 担当者割り当てとの関係
     assignments = relationship(
         "JobAssignment",
         back_populates="job",
@@ -64,6 +61,12 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    date_applications = relationship(
+        "DateApplication",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
 
 class Application(Base):
     __tablename__ = "applications"
@@ -82,10 +85,7 @@ class Application(Base):
         nullable=False,
     )
 
-    status = Column(
-        String,
-        default="申請中",
-    )
+    status = Column(String, default="申請中")
 
     job = relationship(
         "Job",
@@ -95,6 +95,39 @@ class Application(Base):
     user = relationship(
         "User",
         back_populates="applications",
+    )
+
+
+class DateApplication(Base):
+    __tablename__ = "date_applications"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "date",
+            "user_id",
+            name="uq_date_application_user",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    date = Column(String, nullable=False, index=True)
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+
+    status = Column(
+        String,
+        default="申請中",
+        nullable=False,
+    )
+
+    user = relationship(
+        "User",
+        back_populates="date_applications",
     )
 
 
