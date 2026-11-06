@@ -425,7 +425,7 @@ export default function ContractorPage() {
                 <button
                   key={dateString}
                   onClick={() => setSelectedDate(dateString)}
-                  className={`min-h-[110px] rounded-lg border p-2 text-left transition ${
+                  className={`min-h-[150px] rounded-lg border p-2 text-left align-top transition ${
                     isSelected
                       ? "border-blue-600 bg-blue-100 ring-2 ring-blue-400"
                       : dayJobs.length > 0
@@ -438,10 +438,22 @@ export default function ContractorPage() {
                   </div>
 
                   {dayJobs.length > 0 && (
-                    <div className="text-xs text-blue-800">
-                      {dayJobs.length}件の案件
-                    </div>
-                  )}
+  <div className="mt-1 space-y-1">
+    {dayJobs.map((job) => (
+      <div
+        key={job.id}
+        className="rounded bg-blue-100 p-1 text-[10px] leading-tight text-blue-900"
+      >
+        <p className="font-bold">
+          {job.customer}
+        </p>
+        <p className="mt-0.5">
+          {job.work}
+        </p>
+      </div>
+    ))}
+  </div>
+)}
 
                   {application && (
                     <div
