@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel
 
 
@@ -11,11 +12,7 @@ class JobCreate(BaseModel):
     work: str
     technician: str | None = None
     contractor: str | None = None
-    required_people: int = 1
     status: str = "予定"
-
-    # 案件の参加対象者
-    target_user_ids: list[int] = []
 
 
 class Job(JobCreate):
@@ -79,15 +76,19 @@ class Application(BaseModel):
 
 
 # =========================
-# Approved Application
+# Job Assignment
 # =========================
 
-class ApprovedApplication(BaseModel):
+class JobAssignmentCreate(BaseModel):
+    job_id: int
+    user_id: int
+
+
+class JobAssignment(BaseModel):
     id: int
     job_id: int
     user_id: int
-    status: str
-    user: User
+    user: ApplicationUser
 
     class Config:
         from_attributes = True

@@ -1,8 +1,11 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 import models
 from database import engine
-from routers import jobs, approval, auth, personal_events
+from routers import jobs, approval, auth, personal_events, applications, assignments
+
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -24,6 +27,9 @@ app.include_router(approval.router)
 app.include_router(auth.router)
 app.include_router(personal_events.router)
 app.include_router(applications.router)
+app.include_router(assignments.router)
+
+
 @app.get("/")
 def root():
     return {

@@ -1,3 +1,4 @@
+
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 
@@ -15,28 +16,23 @@ class Job(Base):
     technician = Column(String, nullable=True)
     contractor = Column(String, nullable=True)
 
-    # この案件に必要な人数
-    required_people = Column(Integer, default=1)
-
-    # 案件そのものの状態
+    # 案件の状態
     status = Column(String, default="予定")
 
-    # この案件に対する申請
+    # 参加申請との関係
     applications = relationship(
         "Application",
         back_populates="job",
         cascade="all, delete-orphan",
     )
 
-    target_users = relationship(
-    "JobTargetUser",
-    back_populates="job",
-    cascade="all, delete-orphan",
-)
+    # 担当者割り当てとの関係
+    assignments = relationship(
+        "JobAssignment",
+        back_populates="job",
+        cascade="all, delete-orphan",
+    )
 
-    @property
-    def target_user_ids(self):
-        return [target.user_id for target in self.target_users]
 
 class User(Base):
     __tablename__ = "users"
@@ -47,11 +43,9 @@ class User(Base):
     name = Column(String, nullable=False)
     role = Column(String, default="外注")
 
-    # アカウント認証用
     email = Column(String, unique=True, nullable=True)
     password_hash = Column(String, nullable=True)
 
-    # 承認待ち / 承認済み / 却下
     approval_status = Column(
         String,
         default="承認待ち",
@@ -64,55 +58,79 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
-    target_jobs = relationship(
-    "JobTargetUser",
-    back_populates="user",
-    cascade="all, delete-orphan",
-)
+    assignments = relationship(
+        "JobAssignment",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
 class Application(Base):
     __tablename__ = "applications"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # どの案件への申請か
     job_id = Column(
         Integer,
         ForeignKey("jobs.id"),
         nullable=False,
     )
 
-    # 誰が申請したか
     user_id = Column(
         Integer,
         ForeignKey("users.id"),
         nullable=False,
     )
 
-    # 申請状態
-    # 未申請 / 申請中 / 承認 / 却下
     status = Column(
         String,
         default="申請中",
     )
 
-    # 案件との関係
     job = relationship(
         "Job",
         back_populates="applications",
     )
 
-    # ユーザーとの関係
     user = relationship(
         "User",
         back_populates="applications",
     )
+
+
+class JobAssignment(Base):
+    __tablename__ = "job_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    job_id = Column(
+        Integer,
+        ForeignKey("jobs.id"),
+        nullable=False,
+    )
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+
+    job = relationship(
+        "Job",
+        back_populates="assignments",
+    )
+
+    user = relationship(
+        "User",
+        back_populates="assignments",
+    )
+
 
 class PersonalEvent(Base):
     __tablename__ = "personal_events"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # 予定を登録したユーザー
     user_id = Column(
         Integer,
         ForeignKey("users.id"),
@@ -120,35 +138,6 @@ class PersonalEvent(Base):
         index=True,
     )
 
-    # 予定の日付
     date = Column(String, nullable=False)
-
-    # 予定のタイトル
     title = Column(String, nullable=False)
-
-    # 予定の詳細
     description = Column(String, nullable=True)
-
-# =========================
-# 案件の参加対象者
-# =========================
-
-class JobTargetUser(Base):
-    __tablename__ = "job_target_users"
-
-    id = Column(Integer, primary_key=True, index=True)
-
-    job_id = Column(
-        Integer,
-        ForeignKey("jobs.id"),
-        nullable=False,
-    )
-
-    user_id = Column(
-        Integer,
-        ForeignKey("users.id"),
-        nullable=False,
-    )
-
-    job = relationship("Job")
-    user = relationship("User")

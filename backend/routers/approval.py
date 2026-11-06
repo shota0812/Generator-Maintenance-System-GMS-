@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -55,31 +56,14 @@ def create_application(
             detail="User not found",
         )
 
-        # 参加対象者として指定されているか確認
-    target = (
-        db.query(models.JobTargetUser)
-        .filter(
-            models.JobTargetUser.job_id == application.job_id,
-            models.JobTargetUser.user_id == application.user_id,
-        )
-        .first()
-    )
-
-    target_count = (
-        db.query(models.JobTargetUser)
-        .filter(
-            models.JobTargetUser.job_id == application.job_id
-        )
-        .count()
-    )
-
-    if target_count > 0 and target is None:
+    # アカウント承認済みか確認
+    if user.approval_status != "承認済み":
         raise HTTPException(
             status_code=403,
-            detail="この案件の参加対象者ではありません",
+            detail="User is not approved",
         )
-    
-    # 二重申請防止
+
+    # 過去の申請を確認
     existing = (
         db.query(models.Application)
         .filter(
@@ -90,11 +74,19 @@ def create_application(
     )
 
     if existing is not None:
+        # 却下済みなら再申請を受け付ける
+        if existing.status == "却下":
+            existing.status = "申請中"
+            db.commit()
+            db.refresh(existing)
+            return existing
+
         raise HTTPException(
             status_code=400,
             detail="Already applied",
         )
 
+    # 参加申請を登録
     db_application = models.Application(
         job_id=application.job_id,
         user_id=application.user_id,
@@ -117,24 +109,6 @@ def get_applications(
     db: Session = Depends(get_db),
 ):
     return db.query(models.Application).all()
-
-
-# =========================
-# 承認済み申請一覧
-# =========================
-
-@router.get(
-    "/approved",
-    response_model=list[schemas.ApprovedApplication],
-)
-def get_approved_applications(
-    db: Session = Depends(get_db),
-):
-    return (
-        db.query(models.Application)
-        .filter(models.Application.status == "承認")
-        .all()
-    )
 
 
 # =========================
@@ -166,27 +140,6 @@ def update_application_status(
         )
 
     application.status = status
-
-        # 管理者が承認した場合
-    if status == "承認":
-        # 案件を確定
-        application.job.status = "確定"
-
-        # 承認されたユーザーの情報を担当者欄に追加
-        technician = application.user.name
-        contractor = application.user.company
-
-        if application.job.technician:
-            if technician not in application.job.technician.split(", "):
-                application.job.technician += f", {technician}"
-        else:
-            application.job.technician = technician
-
-        if application.job.contractor:
-            if contractor not in application.job.contractor.split(", "):
-                application.job.contractor += f", {contractor}"
-        else:
-            application.job.contractor = contractor
 
     db.commit()
     db.refresh(application)
