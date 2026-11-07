@@ -119,14 +119,12 @@ class DateApplication(Base):
         nullable=False,
     )
 
-    # 外注会社が申請した参加可能人数
     available_people = Column(
         Integer,
         default=0,
         nullable=False,
     )
 
-    # 管理者が確定した依頼人数
     confirmed_people = Column(
         Integer,
         default=0,
@@ -188,3 +186,16 @@ class PersonalEvent(Base):
     date = Column(String, nullable=False)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
+
+
+class CustomerUnavailablePeriod(Base):
+    __tablename__ = "customer_unavailable_periods"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    customer = Column(String, nullable=False, index=True)
+
+    start_date = Column(String, nullable=False)
+    end_date = Column(String, nullable=False)
+
+    reason = Column(String, nullable=True)

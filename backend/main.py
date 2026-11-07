@@ -11,6 +11,7 @@ from routers import (
     personal_events,
     assignments,
     date_applications,
+    customer_unavailable_periods,
 )
 
 
@@ -35,6 +36,7 @@ app.include_router(auth.router)
 app.include_router(personal_events.router)
 app.include_router(assignments.router)
 app.include_router(date_applications.router)
+app.include_router(customer_unavailable_periods.router)
 
 
 @app.get("/")

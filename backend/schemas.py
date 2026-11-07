@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel
 
 
@@ -121,6 +122,35 @@ class JobAssignment(BaseModel):
     job_id: int
     user_id: int
     user: ApplicationUser
+
+    class Config:
+        from_attributes = True
+
+
+# =========================
+# Customer Unavailable Period
+# =========================
+
+class CustomerUnavailablePeriodCreate(BaseModel):
+    customer: str
+    start_date: str
+    end_date: str
+    reason: str | None = None
+
+
+class CustomerUnavailablePeriodUpdate(BaseModel):
+    customer: str
+    start_date: str
+    end_date: str
+    reason: str | None = None
+
+
+class CustomerUnavailablePeriod(BaseModel):
+    id: int
+    customer: str
+    start_date: str
+    end_date: str
+    reason: str | None = None
 
     class Config:
         from_attributes = True
