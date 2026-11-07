@@ -36,38 +36,42 @@ export default function AccountPage() {
       } else {
         const response = await axios.post(
           `${API_URL}/users/login`,
-          null,
           {
-            params: {
-              email,
-              password,
-            },
+            email,
+            password,
           }
         );
 
-        setMessage(
-          `ログイン成功：${response.data.name} さん`
+        // JWTトークンを保存
+        sessionStorage.setItem(
+          "contractorToken",
+          response.data.access_token
+        );
+
+        // ログインユーザー情報を保存
+        sessionStorage.setItem(
+          "userId",
+          String(response.data.user.id)
         );
 
         sessionStorage.setItem(
-  "userId",
-  String(response.data.id)
-);
+          "userRole",
+          response.data.user.role
+        );
 
-sessionStorage.setItem(
-  "userRole",
-  response.data.role
-);
+        sessionStorage.setItem(
+          "userCompany",
+          response.data.user.company
+        );
 
-sessionStorage.setItem(
-  "userCompany",
-  response.data.company
-);
+        sessionStorage.setItem(
+          "userName",
+          response.data.user.name
+        );
 
-sessionStorage.setItem(
-  "userName",
-  response.data.name
-);
+        setMessage(
+          `ログイン成功：${response.data.user.name} さん`
+        );
 
         window.location.href = "/contractor";
       }

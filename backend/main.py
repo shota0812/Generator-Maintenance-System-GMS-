@@ -1,4 +1,9 @@
 
+from dotenv import load_dotenv
+
+# 環境変数を最初に読み込む
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

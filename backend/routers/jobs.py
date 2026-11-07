@@ -1,40 +1,35 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
 import schemas
-from database import SessionLocal
+from security import get_db, get_current_user, get_current_admin
 
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 # =========================
-# 案件一覧
+# 案件一覧（承認済みユーザー）
 # =========================
 
 @router.get("", response_model=list[schemas.Job])
-def get_jobs(db: Session = Depends(get_db)):
+def get_jobs(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     return db.query(models.Job).order_by(models.Job.date).all()
 
 
 # =========================
-# 案件作成
+# 案件作成（管理者のみ）
 # =========================
 
 @router.post("", response_model=schemas.Job)
 def create_job(
     job: schemas.JobCreate,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     db_job = models.Job(
         date=job.date,
@@ -53,7 +48,7 @@ def create_job(
 
 
 # =========================
-# 案件編集
+# 案件編集（管理者のみ）
 # =========================
 
 @router.put("/{job_id}", response_model=schemas.Job)
@@ -61,6 +56,7 @@ def update_job(
     job_id: int,
     job: schemas.JobCreate,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     db_job = (
         db.query(models.Job)
@@ -88,13 +84,14 @@ def update_job(
 
 
 # =========================
-# 案件削除
+# 案件削除（管理者のみ）
 # =========================
 
 @router.delete("/{job_id}")
 def delete_job(
     job_id: int,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     db_job = (
         db.query(models.Job)

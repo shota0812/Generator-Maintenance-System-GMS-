@@ -1,10 +1,9 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
 import schemas
-from database import SessionLocal
+from security import get_db, get_current_admin
 
 
 router = APIRouter(
@@ -13,27 +12,20 @@ router = APIRouter(
 )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 # =========================
-# 割り当て一覧
+# 割り当て一覧（管理者のみ）
 # =========================
 
 @router.get("", response_model=list[schemas.JobAssignment])
 def get_assignments(
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     return db.query(models.JobAssignment).all()
 
 
 # =========================
-# 案件ごとの割り当て一覧
+# 案件ごとの割り当て一覧（管理者のみ）
 # =========================
 
 @router.get(
@@ -43,6 +35,7 @@ def get_assignments(
 def get_job_assignments(
     job_id: int,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     return (
         db.query(models.JobAssignment)
@@ -52,15 +45,15 @@ def get_job_assignments(
 
 
 # =========================
-# 担当者の割り当て
+# 担当者の割り当て（管理者のみ）
 # =========================
 
 @router.post("", response_model=schemas.JobAssignment)
 def create_assignment(
     assignment: schemas.JobAssignmentCreate,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
-    # 案件の存在確認
     job = (
         db.query(models.Job)
         .filter(models.Job.id == assignment.job_id)
@@ -73,7 +66,6 @@ def create_assignment(
             detail="Job not found",
         )
 
-    # ユーザーの存在確認
     user = (
         db.query(models.User)
         .filter(models.User.id == assignment.user_id)
@@ -86,14 +78,12 @@ def create_assignment(
             detail="User not found",
         )
 
-    # アカウント承認確認
     if user.approval_status != "承認済み":
         raise HTTPException(
             status_code=403,
             detail="User is not approved",
         )
 
-    # 案件の日付に対する申請が承認済みか確認
     date_application = (
         db.query(models.DateApplication)
         .filter(
@@ -110,7 +100,6 @@ def create_assignment(
             detail="Date application is not approved",
         )
 
-    # 二重割り当て防止
     existing = (
         db.query(models.JobAssignment)
         .filter(
@@ -139,13 +128,14 @@ def create_assignment(
 
 
 # =========================
-# 割り当て解除
+# 割り当て解除（管理者のみ）
 # =========================
 
 @router.delete("/{assignment_id}")
 def delete_assignment(
     assignment_id: int,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     assignment = (
         db.query(models.JobAssignment)

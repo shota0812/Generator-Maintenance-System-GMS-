@@ -1,24 +1,15 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
 import schemas
-from database import SessionLocal
+from security import get_db, get_current_user, get_current_admin
 
 
 router = APIRouter(
     prefix="/date-applications",
     tags=["Date Applications"],
 )
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # =========================
@@ -28,8 +19,8 @@ def get_db():
 @router.get("", response_model=list[schemas.DateApplication])
 def get_date_applications(
     date: str | None = None,
-    user_id: int | None = None,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     query = db.query(models.DateApplication)
 
@@ -38,9 +29,10 @@ def get_date_applications(
             models.DateApplication.date == date
         )
 
-    if user_id:
+    # 外注ユーザーは自分の申請のみ
+    if current_user.role != "管理者":
         query = query.filter(
-            models.DateApplication.user_id == user_id
+            models.DateApplication.user_id == current_user.id
         )
 
     return query.all()
@@ -54,7 +46,14 @@ def get_date_applications(
 def create_date_application(
     application: schemas.DateApplicationCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    if current_user.role != "外注":
+        raise HTTPException(
+            status_code=403,
+            detail="外注ユーザーのみ申請できます",
+        )
+
     if application.available_people < 1:
         raise HTTPException(
             status_code=400,
@@ -73,29 +72,11 @@ def create_date_application(
             detail="No jobs on this date",
         )
 
-    user = (
-        db.query(models.User)
-        .filter(models.User.id == application.user_id)
-        .first()
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found",
-        )
-
-    if user.approval_status != "承認済み":
-        raise HTTPException(
-            status_code=403,
-            detail="User is not approved",
-        )
-
     existing = (
         db.query(models.DateApplication)
         .filter(
             models.DateApplication.date == application.date,
-            models.DateApplication.user_id == application.user_id,
+            models.DateApplication.user_id == current_user.id,
         )
         .first()
     )
@@ -116,7 +97,7 @@ def create_date_application(
 
     db_application = models.DateApplication(
         date=application.date,
-        user_id=application.user_id,
+        user_id=current_user.id,
         status="申請中",
         available_people=application.available_people,
         confirmed_people=0,
@@ -130,7 +111,7 @@ def create_date_application(
 
 
 # =========================
-# 申請中の人数変更（取引先）
+# 申請中の人数変更（本人のみ）
 # =========================
 
 @router.put("/{application_id}")
@@ -138,6 +119,7 @@ def update_date_application(
     application_id: int,
     update: schemas.DateApplicationUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     application = (
         db.query(models.DateApplication)
@@ -153,7 +135,7 @@ def update_date_application(
             detail="Date application not found",
         )
 
-    if application.user_id != update.user_id:
+    if current_user.role != "外注" or application.user_id != current_user.id:
         raise HTTPException(
             status_code=403,
             detail="Not your application",
@@ -188,6 +170,7 @@ def update_date_application_status(
     application_id: int,
     decision: schemas.DateApplicationDecision,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     application = (
         db.query(models.DateApplication)
@@ -244,6 +227,7 @@ def update_confirmed_people(
     application_id: int,
     confirmed_people: int,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     application = (
         db.query(models.DateApplication)

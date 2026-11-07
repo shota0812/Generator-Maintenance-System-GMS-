@@ -6,6 +6,37 @@ import { useEffect, useState } from "react";
 
 const API_URL = "https://gms-backend-iazu.onrender.com";
 
+const api = axios.create({
+  baseURL: API_URL,
+});
+
+// JWTトークンを自動で付与
+api.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem("contractorToken");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
+// 認証エラーの場合はログイン画面へ
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      sessionStorage.removeItem("contractorToken");
+      sessionStorage.removeItem("userId");
+      sessionStorage.removeItem("userCompany");
+      sessionStorage.removeItem("userName");
+      window.location.href = "/account";
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 type Job = {
   id: number;
   date: string;
@@ -43,9 +74,8 @@ export default function ContractorPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dateApplications, setDateApplications] = useState<DateApplication[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
-  const [unavailablePeriods, setUnavailablePeriods] = useState<
-  CustomerUnavailablePeriod[]
->([]);
+  const [unavailablePeriods, setUnavailablePeriods] = useState<CustomerUnavailablePeriod[]>([]);
+
   const [userId, setUserId] = useState<number | null>(null);
   const [userCompany, setUserCompany] = useState("");
   const [userName, setUserName] = useState("");
@@ -74,25 +104,19 @@ export default function ContractorPage() {
   const loadData = async (targetUserId: number) => {
     try {
       const [
-  jobsResponse,
-  applicationsResponse,
-  personalEventsResponse,
-  unavailablePeriodsResponse,
-] = await Promise.all([
-  axios.get(`${API_URL}/jobs`),
-  axios.get(`${API_URL}/date-applications`),
-  axios.get(`${API_URL}/personal-events/`, {
-    params: {
-      user_id: targetUserId,
-    },
-  }),
-  axios.get(`${API_URL}/customer-unavailable-periods/`),
-]);
+        jobsResponse,
+        applicationsResponse,
+        personalEventsResponse,
+        unavailablePeriodsResponse,
+      ] = await Promise.all([
+        api.get("/jobs"),
+        api.get("/date-applications"),
+        api.get("/personal-events/"),
+        api.get("/customer-unavailable-periods/"),
+      ]);
 
       setJobs(jobsResponse.data);
-
       setDateApplications(applicationsResponse.data);
-
       setPersonalEvents(personalEventsResponse.data);
       setUnavailablePeriods(unavailablePeriodsResponse.data);
 
@@ -119,9 +143,10 @@ export default function ContractorPage() {
   // =========================
 
   useEffect(() => {
+    const token = sessionStorage.getItem("contractorToken");
     const savedUserId = sessionStorage.getItem("userId");
 
-    if (!savedUserId) {
+    if (!token || !savedUserId) {
       window.location.href = "/account";
       return;
     }
@@ -129,7 +154,10 @@ export default function ContractorPage() {
     const parsedUserId = Number(savedUserId);
 
     if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
-      sessionStorage.clear();
+      sessionStorage.removeItem("contractorToken");
+      sessionStorage.removeItem("userId");
+      sessionStorage.removeItem("userCompany");
+      sessionStorage.removeItem("userName");
       window.location.href = "/account";
       return;
     }
@@ -140,6 +168,19 @@ export default function ContractorPage() {
 
     loadData(parsedUserId);
   }, []);
+
+  // =========================
+  // ログアウト
+  // =========================
+
+  const logout = () => {
+    sessionStorage.removeItem("contractorToken");
+    sessionStorage.removeItem("userId");
+    sessionStorage.removeItem("userCompany");
+    sessionStorage.removeItem("userName");
+
+    window.location.href = "/account";
+  };
 
   // =========================
   // 日付申請取得
@@ -163,18 +204,14 @@ export default function ContractorPage() {
       return;
     }
 
-    if (
-      !Number.isInteger(availablePeople) ||
-      availablePeople < 1
-    ) {
+    if (!Number.isInteger(availablePeople) || availablePeople < 1) {
       alert("参加可能人数を1人以上で入力してください");
       return;
     }
 
     try {
-      await axios.post(`${API_URL}/date-applications`, {
+      await api.post("/date-applications", {
         date,
-        user_id: userId,
         available_people: availablePeople,
       });
 
@@ -198,19 +235,15 @@ export default function ContractorPage() {
 
     const people = editingPeople[application.id];
 
-    if (
-      !Number.isInteger(people) ||
-      people < 1
-    ) {
+    if (!Number.isInteger(people) || people < 1) {
       alert("参加可能人数は1人以上で入力してください");
       return;
     }
 
     try {
-      await axios.put(
-        `${API_URL}/date-applications/${application.id}`,
+      await api.put(
+        `/date-applications/${application.id}`,
         {
-          user_id: userId,
           available_people: people,
         }
       );
@@ -240,8 +273,7 @@ export default function ContractorPage() {
     }
 
     try {
-      await axios.post(`${API_URL}/personal-events/`, {
-        user_id: userId,
+      await api.post("/personal-events/", {
         date: personalEventDate,
         title: personalEventTitle,
         description: personalEventDescription,
@@ -271,11 +303,7 @@ export default function ContractorPage() {
     if (!confirm("この個人予定を削除しますか？")) return;
 
     try {
-      await axios.delete(`${API_URL}/personal-events/${eventId}`, {
-        params: {
-          user_id: userId,
-        },
-      });
+      await api.delete(`/personal-events/${eventId}`);
 
       await loadData(userId);
     } catch (error) {
@@ -345,13 +373,13 @@ export default function ContractorPage() {
   );
 
   // 作業不可期間に該当するか確認
-const getUnavailablePeriodsByDate = (date: string) => {
-  return unavailablePeriods.filter(
-    (period) =>
-      period.start_date <= date &&
-      period.end_date >= date
-  );
-};
+  const getUnavailablePeriodsByDate = (date: string) => {
+    return unavailablePeriods.filter(
+      (period) =>
+        period.start_date <= date &&
+        period.end_date >= date
+    );
+  };
 
   const myDateApplications = dateApplications
     .filter((application) => application.user_id === userId)
@@ -368,10 +396,17 @@ const getUnavailablePeriodsByDate = (date: string) => {
       <div className="mx-auto max-w-7xl">
 
         {/* ユーザー情報 */}
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <p className="text-lg font-semibold text-blue-700">
             ようこそ、{userCompany} {userName}さん
           </p>
+
+          <button
+            onClick={logout}
+            className="rounded-lg bg-gray-600 px-4 py-2 font-semibold text-white hover:bg-gray-700"
+          >
+            ログアウト
+          </button>
         </div>
 
         <h1 className="mb-2 text-4xl font-bold">
@@ -438,8 +473,9 @@ const getUnavailablePeriodsByDate = (date: string) => {
               const dayJobs = monthlyJobs.filter(
                 (job) => job.date === dateString
               );
+
               const dayUnavailablePeriods =
-  getUnavailablePeriodsByDate(dateString);
+                getUnavailablePeriodsByDate(dateString);
 
               const application = getDateApplication(dateString);
 
@@ -462,36 +498,35 @@ const getUnavailablePeriodsByDate = (date: string) => {
                   </div>
 
                   {dayJobs.length > 0 && (
-                    
-  <div className="mt-1 space-y-1">
-    {dayJobs.map((job) => (
-      <div
-        key={job.id}
-        className="rounded bg-blue-100 p-1 text-[10px] leading-tight text-blue-900"
-      >
-        <p className="font-bold">
-          {job.customer}
-        </p>
-        <p className="mt-0.5">
-          {job.work}
-        </p>
-      </div>
-    ))}
-  </div>
-)}
+                    <div className="mt-1 space-y-1">
+                      {dayJobs.map((job) => (
+                        <div
+                          key={job.id}
+                          className="rounded bg-blue-100 p-1 text-[10px] leading-tight text-blue-900"
+                        >
+                          <p className="font-bold">
+                            {job.customer}
+                          </p>
+                          <p className="mt-0.5">
+                            {job.work}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-{dayUnavailablePeriods.map((period) => (
-  <div
-    key={period.id}
-    className="mt-1 rounded bg-red-100 p-1 text-[10px] leading-tight text-red-800"
-  >
-    <p className="font-bold">作業不可</p>
-    <p>{period.customer}</p>
-    {period.reason && (
-      <p>{period.reason}</p>
-    )}
-  </div>
-))}
+                  {dayUnavailablePeriods.map((period) => (
+                    <div
+                      key={period.id}
+                      className="mt-1 rounded bg-red-100 p-1 text-[10px] leading-tight text-red-800"
+                    >
+                      <p className="font-bold">作業不可</p>
+                      <p>{period.customer}</p>
+                      {period.reason && (
+                        <p>{period.reason}</p>
+                      )}
+                    </div>
+                  ))}
 
                   {application && (
                     <div
@@ -504,10 +539,10 @@ const getUnavailablePeriodsByDate = (date: string) => {
                       }`}
                     >
                       {application.status === "承認"
-  ? `確定${application.confirmed_people}人`
-  : application.status === "却下"
-  ? "依頼なし"
-  : `申請中（${application.available_people}人）`}
+                        ? `確定${application.confirmed_people}人`
+                        : application.status === "却下"
+                        ? "依頼なし"
+                        : `申請中（${application.available_people}人）`}
                     </div>
                   )}
                 </button>

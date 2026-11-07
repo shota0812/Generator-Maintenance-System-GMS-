@@ -1,10 +1,9 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
 import schemas
-from database import SessionLocal
+from security import get_db, get_current_user, get_current_admin
 
 
 router = APIRouter(
@@ -13,24 +12,22 @@ router = APIRouter(
 )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 # =========================
-# 参加申請
+# 参加申請（ログインユーザー本人）
 # =========================
 
 @router.post("", response_model=schemas.Application)
 def create_application(
     application: schemas.ApplicationCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    # 案件の存在確認
+    if current_user.role != "外注":
+        raise HTTPException(
+            status_code=403,
+            detail="外注ユーザーのみ申請できます",
+        )
+
     job = (
         db.query(models.Job)
         .filter(models.Job.id == application.job_id)
@@ -43,38 +40,16 @@ def create_application(
             detail="Job not found",
         )
 
-    # ユーザーの存在確認
-    user = (
-        db.query(models.User)
-        .filter(models.User.id == application.user_id)
-        .first()
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found",
-        )
-
-    # アカウント承認済みか確認
-    if user.approval_status != "承認済み":
-        raise HTTPException(
-            status_code=403,
-            detail="User is not approved",
-        )
-
-    # 過去の申請を確認
     existing = (
         db.query(models.Application)
         .filter(
             models.Application.job_id == application.job_id,
-            models.Application.user_id == application.user_id,
+            models.Application.user_id == current_user.id,
         )
         .first()
     )
 
     if existing is not None:
-        # 却下済みなら再申請を受け付ける
         if existing.status == "却下":
             existing.status = "申請中"
             db.commit()
@@ -86,10 +61,9 @@ def create_application(
             detail="Already applied",
         )
 
-    # 参加申請を登録
     db_application = models.Application(
         job_id=application.job_id,
-        user_id=application.user_id,
+        user_id=current_user.id,
         status="申請中",
     )
 
@@ -107,12 +81,20 @@ def create_application(
 @router.get("", response_model=list[schemas.Application])
 def get_applications(
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    return db.query(models.Application).all()
+    query = db.query(models.Application)
+
+    if current_user.role != "管理者":
+        query = query.filter(
+            models.Application.user_id == current_user.id
+        )
+
+    return query.all()
 
 
 # =========================
-# 管理者による承認・却下
+# 承認・却下（管理者のみ）
 # =========================
 
 @router.put("/{application_id}/status")
@@ -120,6 +102,7 @@ def update_application_status(
     application_id: int,
     status: str,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     application = (
         db.query(models.Application)

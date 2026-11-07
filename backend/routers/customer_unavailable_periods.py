@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from database import SessionLocal
+from security import get_db, get_current_user, get_current_admin
 from models import CustomerUnavailablePeriod
 from schemas import (
     CustomerUnavailablePeriodCreate,
@@ -16,16 +16,15 @@ router = APIRouter(
 )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
+# =========================
+# 作業不可期間一覧（ログインユーザー）
+# =========================
 
 @router.get("/")
-def get_periods(db: Session = Depends(get_db)):
+def get_periods(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     return (
         db.query(CustomerUnavailablePeriod)
         .order_by(CustomerUnavailablePeriod.start_date)
@@ -33,10 +32,15 @@ def get_periods(db: Session = Depends(get_db)):
     )
 
 
+# =========================
+# 作業不可期間登録（管理者のみ）
+# =========================
+
 @router.post("/")
 def create_period(
     period: CustomerUnavailablePeriodCreate,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     if period.start_date > period.end_date:
         raise HTTPException(
@@ -58,11 +62,16 @@ def create_period(
     return new_period
 
 
+# =========================
+# 作業不可期間編集（管理者のみ）
+# =========================
+
 @router.put("/{period_id}")
 def update_period(
     period_id: int,
     period: CustomerUnavailablePeriodUpdate,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     existing_period = (
         db.query(CustomerUnavailablePeriod)
@@ -93,10 +102,15 @@ def update_period(
     return existing_period
 
 
+# =========================
+# 作業不可期間削除（管理者のみ）
+# =========================
+
 @router.delete("/{period_id}")
 def delete_period(
     period_id: int,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     period = (
         db.query(CustomerUnavailablePeriod)

@@ -81,12 +81,10 @@ class Application(BaseModel):
 
 class DateApplicationCreate(BaseModel):
     date: str
-    user_id: int
     available_people: int
 
 
 class DateApplicationUpdate(BaseModel):
-    user_id: int
     available_people: int
 
 

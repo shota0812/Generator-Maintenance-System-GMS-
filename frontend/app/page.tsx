@@ -5,6 +5,45 @@ import { useEffect, useState } from "react";
 
 const API_URL = "https://gms-backend-iazu.onrender.com";
 
+// =========================
+// 認証付きAPI通信
+// =========================
+
+const api = axios.create({
+  baseURL: API_URL,
+});
+
+api.interceptors.request.use((config) => {
+  if (typeof window !== "undefined") {
+    const token = sessionStorage.getItem("adminToken");
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (
+      error.response?.status === 401 &&
+      typeof window !== "undefined"
+    ) {
+      sessionStorage.removeItem("adminToken");
+      window.location.reload();
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// =========================
+// 型定義
+// =========================
+
 type Job = {
   id: number;
   date: string;
@@ -55,18 +94,25 @@ type PendingUser = {
   approval_status: string;
 };
 
+// =========================
+// メイン画面
+// =========================
+
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dateApplications, setDateApplications] = useState<DateApplication[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
 
-  const [customerUnavailablePeriods, setCustomerUnavailablePeriods] = useState<
-    CustomerUnavailablePeriod[]
-  >([]);
-  const [showUnavailablePeriodForm, setShowUnavailablePeriodForm] = useState(false);
+  const [customerUnavailablePeriods, setCustomerUnavailablePeriods] =
+    useState<CustomerUnavailablePeriod[]>([]);
+
+  const [showUnavailablePeriodForm, setShowUnavailablePeriodForm] =
+    useState(false);
+
   const [editingUnavailablePeriod, setEditingUnavailablePeriod] =
     useState<CustomerUnavailablePeriod | null>(null);
+
   const [periodCustomer, setPeriodCustomer] = useState("");
   const [periodStartDate, setPeriodStartDate] = useState("");
   const [periodEndDate, setPeriodEndDate] = useState("");
@@ -77,6 +123,8 @@ export default function Home() {
   >({});
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -97,13 +145,26 @@ export default function Home() {
   const [personalEventTitle, setPersonalEventTitle] = useState("");
   const [personalEventDescription, setPersonalEventDescription] = useState("");
 
-  const userId = 1;
   const today = new Date();
 
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const [selectedDate, setSelectedDate] = useState("");
+
+  // =========================
+  // ログイン状態の復元
+  // =========================
+
+  useEffect(() => {
+    const token = sessionStorage.getItem("adminToken");
+
+    if (token) {
+      setIsAuthenticated(true);
+    }
+
+    setIsCheckingAuth(false);
+  }, []);
 
   // =========================
   // 月・年の切り替え
@@ -116,6 +177,7 @@ export default function Home() {
     } else {
       setCurrentMonth(currentMonth - 1);
     }
+
     setSelectedDate("");
   };
 
@@ -126,6 +188,7 @@ export default function Home() {
     } else {
       setCurrentMonth(currentMonth + 1);
     }
+
     setSelectedDate("");
   };
 
@@ -185,13 +248,34 @@ export default function Home() {
         }
       );
 
-      if (response.data.authenticated) {
+      if (response.data.access_token) {
+        sessionStorage.setItem(
+          "adminToken",
+          response.data.access_token
+        );
+
         setIsAuthenticated(true);
+      } else {
+        setLoginError("ログインに失敗しました");
       }
     } catch (error) {
       console.error(error);
       setLoginError("メールアドレスまたはパスワードが違います");
     }
+  };
+
+  // =========================
+  // ログアウト
+  // =========================
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("adminToken");
+    setIsAuthenticated(false);
+    setJobs([]);
+    setDateApplications([]);
+    setPersonalEvents([]);
+    setPendingUsers([]);
+    setCustomerUnavailablePeriods([]);
   };
 
   // =========================
@@ -207,13 +291,11 @@ export default function Home() {
         pendingUsersResponse,
         unavailablePeriodsResponse,
       ] = await Promise.all([
-        axios.get(`${API_URL}/jobs`),
-        axios.get(`${API_URL}/date-applications`),
-        axios.get(`${API_URL}/personal-events/`, {
-          params: { user_id: userId },
-        }),
-        axios.get(`${API_URL}/users/pending`),
-        axios.get(`${API_URL}/customer-unavailable-periods/`),
+        api.get("/jobs"),
+        api.get("/date-applications"),
+        api.get("/personal-events/"),
+        api.get("/users/pending"),
+        api.get("/customer-unavailable-periods/"),
       ]);
 
       setJobs(jobsResponse.data);
@@ -256,8 +338,8 @@ export default function Home() {
     approvalStatus: string
   ) => {
     try {
-      await axios.put(
-        `${API_URL}/users/${targetUserId}/approval-status`,
+      await api.put(
+        `/users/${targetUserId}/approval-status`,
         null,
         {
           params: { status: approvalStatus },
@@ -287,8 +369,8 @@ export default function Home() {
     confirmedPeople: number = 0
   ) => {
     try {
-      await axios.put(
-        `${API_URL}/date-applications/${applicationId}/status`,
+      await api.put(
+        `/date-applications/${applicationId}/status`,
         {
           status: newStatus,
           confirmed_people: confirmedPeople,
@@ -329,8 +411,8 @@ export default function Home() {
     }
 
     try {
-      await axios.put(
-        `${API_URL}/date-applications/${application.id}/confirmed-people`,
+      await api.put(
+        `/date-applications/${application.id}/confirmed-people`,
         null,
         {
           params: {
@@ -358,8 +440,7 @@ export default function Home() {
     }
 
     try {
-      await axios.post(`${API_URL}/personal-events/`, {
-        user_id: userId,
+      await api.post("/personal-events/", {
         date: personalEventDate,
         title: personalEventTitle,
         description: personalEventDescription,
@@ -384,9 +465,7 @@ export default function Home() {
     }
 
     try {
-      await axios.delete(`${API_URL}/personal-events/${eventId}`, {
-        params: { user_id: userId },
-      });
+      await api.delete(`/personal-events/${eventId}`);
 
       await loadData();
     } catch (error) {
@@ -477,7 +556,7 @@ export default function Home() {
     }
 
     try {
-      await axios.delete(`${API_URL}/jobs/${jobId}`);
+      await api.delete(`/jobs/${jobId}`);
       await loadData();
       setIsOpen(false);
       setEditingJob(null);
@@ -486,10 +565,6 @@ export default function Home() {
       alert("削除に失敗しました");
     }
   };
-
-  // =========================
-  // 案件追加・編集
-  // =========================
 
   // =========================
   // 顧客別作業不可期間
@@ -523,16 +598,18 @@ export default function Home() {
 
     try {
       if (editingUnavailablePeriod) {
-        await axios.put(
-          `${API_URL}/customer-unavailable-periods/${editingUnavailablePeriod.id}`,
+        await api.put(
+          `/customer-unavailable-periods/${editingUnavailablePeriod.id}`,
           periodData
         );
+
         alert("作業不可期間を更新しました");
       } else {
-        await axios.post(
-          `${API_URL}/customer-unavailable-periods/`,
+        await api.post(
+          "/customer-unavailable-periods/",
           periodData
         );
+
         alert("作業不可期間を登録しました");
       }
 
@@ -545,7 +622,9 @@ export default function Home() {
     }
   };
 
-  const editUnavailablePeriod = (period: CustomerUnavailablePeriod) => {
+  const editUnavailablePeriod = (
+    period: CustomerUnavailablePeriod
+  ) => {
     setEditingUnavailablePeriod(period);
     setPeriodCustomer(period.customer);
     setPeriodStartDate(period.start_date);
@@ -560,20 +639,25 @@ export default function Home() {
     }
 
     try {
-      await axios.delete(
-        `${API_URL}/customer-unavailable-periods/${periodId}`
-      );
+      await api.delete(`/customer-unavailable-periods/${periodId}`);
+
       await loadData();
+
       if (editingUnavailablePeriod?.id === periodId) {
         resetUnavailablePeriodForm();
         setShowUnavailablePeriodForm(false);
       }
+
       alert("作業不可期間を削除しました");
     } catch (error) {
       console.error(error);
       alert("作業不可期間の削除に失敗しました");
     }
   };
+
+  // =========================
+  // 案件追加・編集
+  // =========================
 
   const handleSubmit = async () => {
     if (!date || !customer.trim() || !work.trim()) {
@@ -592,9 +676,11 @@ export default function Home() {
       const reasonText = matchingUnavailablePeriod.reason
         ? `\n理由：${matchingUnavailablePeriod.reason}`
         : "";
+
       const shouldContinue = confirm(
         `${customer}は${matchingUnavailablePeriod.start_date}〜${matchingUnavailablePeriod.end_date}の作業不可期間に設定されています。${reasonText}\nそれでも案件を登録・更新しますか？`
       );
+
       if (!shouldContinue) {
         return;
       }
@@ -611,12 +697,12 @@ export default function Home() {
       };
 
       if (editingJob) {
-        await axios.put(
-          `${API_URL}/jobs/${editingJob.id}`,
+        await api.put(
+          `/jobs/${editingJob.id}`,
           jobData
         );
       } else {
-        await axios.post(`${API_URL}/jobs`, jobData);
+        await api.post("/jobs", jobData);
       }
 
       await loadData();
@@ -633,6 +719,7 @@ export default function Home() {
       setSelectedDate(date);
     } catch (error) {
       console.error(error);
+
       alert(
         editingJob
           ? "編集に失敗しました"
@@ -640,6 +727,18 @@ export default function Home() {
       );
     }
   };
+
+  // =========================
+  // 認証確認中の画面
+  // =========================
+
+  if (isCheckingAuth) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-100">
+        <p className="text-gray-600">認証状態を確認しています...</p>
+      </main>
+    );
+  }
 
   // =========================
   // ログイン画面
@@ -694,9 +793,18 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-7xl p-6">
-      <h1 className="mb-8 text-4xl font-bold">
-        発電機保守管理システム
-      </h1>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-4xl font-bold">
+          発電機保守管理システム
+        </h1>
+
+        <button
+          onClick={handleLogout}
+          className="rounded bg-gray-600 px-4 py-2 text-white hover:bg-gray-700"
+        >
+          ログアウト
+        </button>
+      </div>
 
       {/* 月・年切り替え */}
 
@@ -797,6 +905,7 @@ export default function Home() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-full max-w-md rounded-lg border border-gray-300 bg-white p-3 shadow-sm"
         />
+
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => {
@@ -995,6 +1104,7 @@ export default function Home() {
                   );
 
                   const monthStart = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+
                   const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(
                     getDaysInMonth(currentYear, currentMonth)
                   ).padStart(2, "0")}`;
@@ -1054,7 +1164,10 @@ export default function Home() {
                                         key={`unavailable-${period.id}`}
                                         className="rounded border border-red-300 bg-red-100 p-2 text-xs text-red-800"
                                       >
-                                        <div className="font-bold">作業不可</div>
+                                        <div className="font-bold">
+                                          作業不可
+                                        </div>
+
                                         {period.reason && (
                                           <div className="mt-1 break-words">
                                             {period.reason}
@@ -1062,6 +1175,7 @@ export default function Home() {
                                         )}
                                       </div>
                                     ))}
+
                                   {dayJobs.map((job) => (
                                     <div
                                       key={job.id}
@@ -1074,6 +1188,7 @@ export default function Home() {
                                       <div className="font-bold">
                                         {job.work || "作業予定"}
                                       </div>
+
                                       <div className="mt-1">
                                         担当：{job.technician || "未設定"}
                                       </div>
@@ -1166,7 +1281,7 @@ export default function Home() {
                   )}
                 </tr>
 
-                {/* 管理者の個人予定：カレンダー内の表示は残す */}
+                {/* 管理者の個人予定 */}
 
                 <tr>
                   <td className="sticky left-0 z-10 border border-gray-300 bg-green-100 p-3 font-bold">
@@ -1239,10 +1354,12 @@ export default function Home() {
               <span className="mr-1 inline-block h-3 w-3 rounded border border-red-200 bg-red-50" />
               日曜日
             </div>
+
             <div>
               <span className="mr-1 inline-block h-3 w-3 rounded border border-blue-200 bg-blue-50" />
               土曜日
             </div>
+
             <div>案件をクリック → 編集</div>
             <div>日付をクリック → 下に案件一覧を表示</div>
           </div>
@@ -1255,6 +1372,7 @@ export default function Home() {
                 <p className="text-lg font-semibold text-gray-600">
                   カレンダーの日付をクリックしてください
                 </p>
+
                 <p className="mt-2 text-sm text-gray-500">
                   選択した日の案件と参加申請をここに表示します。
                 </p>
@@ -1266,6 +1384,7 @@ export default function Home() {
                     <h2 className="text-2xl font-bold">
                       {formatDate(selectedDate)} の案件管理
                     </h2>
+
                     <p className="mt-1 text-sm text-gray-500">
                       参加可能人数を確認し、必要な人数を確定できます。
                     </p>
@@ -1309,12 +1428,15 @@ export default function Home() {
                           <div>
                             <p className="font-bold">{job.customer}</p>
                             <p>{job.work}</p>
+
                             <p className="mt-1 text-sm text-gray-500">
                               社内担当者：{job.technician || "未設定"}
                             </p>
+
                             <p className="text-sm text-gray-500">
                               外注：{job.contractor || "未設定"}
                             </p>
+
                             <p className="text-sm text-gray-500">
                               状態：{job.status}
                             </p>
@@ -1353,6 +1475,7 @@ export default function Home() {
                         <p className="text-sm text-gray-600">
                           参加可能人数の合計
                         </p>
+
                         <p className="text-2xl font-bold text-blue-800">
                           {selectedDateApplications.reduce(
                             (sum, application) =>
@@ -1361,9 +1484,11 @@ export default function Home() {
                           )}
                           人
                         </p>
+
                         <p className="mt-2 text-sm text-gray-600">
                           確定人数の合計
                         </p>
+
                         <p className="text-2xl font-bold text-green-700">
                           {selectedDateApplications
                             .filter((application) => application.status === "承認")
@@ -1387,6 +1512,7 @@ export default function Home() {
                                 <p className="text-lg font-bold">
                                   {application.user.company}
                                 </p>
+
                                 <p className="text-sm text-gray-600">
                                   申請者：{application.user.name}
                                 </p>
@@ -1588,7 +1714,10 @@ export default function Home() {
       <div className="mt-10 mb-6 rounded-lg bg-white p-5 shadow">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold">顧客別作業不可期間</h2>
+            <h2 className="text-xl font-bold">
+              顧客別作業不可期間
+            </h2>
+
             <p className="mt-1 text-sm text-gray-500">
               顧客ごとに、保守作業を実施できない期間を登録できます。
             </p>
@@ -1606,18 +1735,25 @@ export default function Home() {
             }}
             className="rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700"
           >
-            {showUnavailablePeriodForm ? "閉じる" : "＋ 作業不可期間を登録"}
+            {showUnavailablePeriodForm
+              ? "閉じる"
+              : "＋ 作業不可期間を登録"}
           </button>
         </div>
 
         {showUnavailablePeriodForm && (
           <div className="mt-5 space-y-4 border-t pt-5">
             <h3 className="font-bold">
-              {editingUnavailablePeriod ? "作業不可期間を編集" : "作業不可期間を新規登録"}
+              {editingUnavailablePeriod
+                ? "作業不可期間を編集"
+                : "作業不可期間を新規登録"}
             </h3>
 
             <div>
-              <label className="mb-1 block font-semibold">顧客名</label>
+              <label className="mb-1 block font-semibold">
+                顧客名
+              </label>
+
               <input
                 type="text"
                 value={periodCustomer}
@@ -1629,7 +1765,10 @@ export default function Home() {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1 block font-semibold">開始日</label>
+                <label className="mb-1 block font-semibold">
+                  開始日
+                </label>
+
                 <input
                   type="date"
                   value={periodStartDate}
@@ -1637,8 +1776,12 @@ export default function Home() {
                   className="w-full rounded border p-3"
                 />
               </div>
+
               <div>
-                <label className="mb-1 block font-semibold">終了日</label>
+                <label className="mb-1 block font-semibold">
+                  終了日
+                </label>
+
                 <input
                   type="date"
                   value={periodEndDate}
@@ -1649,7 +1792,10 @@ export default function Home() {
             </div>
 
             <div>
-              <label className="mb-1 block font-semibold">理由（任意）</label>
+              <label className="mb-1 block font-semibold">
+                理由（任意）
+              </label>
+
               <textarea
                 value={periodReason}
                 onChange={(e) => setPeriodReason(e.target.value)}
@@ -1665,6 +1811,7 @@ export default function Home() {
               >
                 {editingUnavailablePeriod ? "変更を保存" : "登録"}
               </button>
+
               {editingUnavailablePeriod && (
                 <button
                   onClick={() => {
@@ -1682,7 +1829,9 @@ export default function Home() {
 
         <div className="mt-5 space-y-3">
           {customerUnavailablePeriods.length === 0 ? (
-            <p className="text-gray-500">登録されている作業不可期間はありません。</p>
+            <p className="text-gray-500">
+              登録されている作業不可期間はありません。
+            </p>
           ) : (
             customerUnavailablePeriods.map((period) => (
               <div
@@ -1690,16 +1839,21 @@ export default function Home() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4"
               >
                 <div>
-                  <p className="font-bold text-red-800">{period.customer}</p>
+                  <p className="font-bold text-red-800">
+                    {period.customer}
+                  </p>
+
                   <p className="text-sm text-gray-700">
                     {period.start_date} 〜 {period.end_date}
                   </p>
+
                   {period.reason && (
                     <p className="mt-1 text-sm text-gray-600">
                       理由：{period.reason}
                     </p>
                   )}
                 </div>
+
                 <div className="flex gap-2">
                   <button
                     onClick={() => editUnavailablePeriod(period)}
@@ -1707,6 +1861,7 @@ export default function Home() {
                   >
                     編集
                   </button>
+
                   <button
                     onClick={() => deleteUnavailablePeriod(period.id)}
                     className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
@@ -1720,7 +1875,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 下部：管理者の個人予定 */}
+      {/* 管理者の個人予定 */}
 
       <div className="mt-10 mb-6 rounded-lg bg-white p-5 shadow">
         <div className="flex items-center justify-between">
@@ -1728,6 +1883,7 @@ export default function Home() {
             <h2 className="text-xl font-bold">
               管理者の個人予定
             </h2>
+
             <p className="mt-1 text-sm text-gray-500">
               管理者自身のカレンダーに表示される予定です。
             </p>
@@ -1749,12 +1905,11 @@ export default function Home() {
               <label className="mb-1 block font-semibold">
                 日付
               </label>
+
               <input
                 type="date"
                 value={personalEventDate}
-                onChange={(e) =>
-                  setPersonalEventDate(e.target.value)
-                }
+                onChange={(e) => setPersonalEventDate(e.target.value)}
                 className="w-full rounded border p-3"
               />
             </div>
@@ -1763,12 +1918,11 @@ export default function Home() {
               <label className="mb-1 block font-semibold">
                 予定名
               </label>
+
               <input
                 type="text"
                 value={personalEventTitle}
-                onChange={(e) =>
-                  setPersonalEventTitle(e.target.value)
-                }
+                onChange={(e) => setPersonalEventTitle(e.target.value)}
                 placeholder="例：社内打ち合わせ"
                 className="w-full rounded border p-3"
               />
@@ -1778,6 +1932,7 @@ export default function Home() {
               <label className="mb-1 block font-semibold">
                 詳細（任意）
               </label>
+
               <textarea
                 value={personalEventDescription}
                 onChange={(e) =>
@@ -1798,7 +1953,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* 下部：外注ユーザー承認 */}
+      {/* 外注ユーザー承認 */}
 
       <div className="mb-8 rounded-lg bg-white p-6 shadow">
         <h2 className="mb-4 text-2xl font-bold">
@@ -1819,9 +1974,11 @@ export default function Home() {
                 <div>
                   <p className="font-bold">{user.company}</p>
                   <p>{user.name}</p>
+
                   <p className="text-sm text-gray-500">
                     {user.email}
                   </p>
+
                   <p className="mt-1 text-sm text-yellow-700">
                     {user.approval_status}
                   </p>
@@ -1866,6 +2023,7 @@ export default function Home() {
                 <label className="mb-1 block font-semibold">
                   日付
                 </label>
+
                 <input
                   type="date"
                   value={date}
@@ -1878,6 +2036,7 @@ export default function Home() {
                 <label className="mb-1 block font-semibold">
                   顧客
                 </label>
+
                 <input
                   type="text"
                   placeholder="顧客"
@@ -1891,6 +2050,7 @@ export default function Home() {
                 <label className="mb-1 block font-semibold">
                   作業内容
                 </label>
+
                 <input
                   type="text"
                   placeholder="作業内容"
@@ -1904,6 +2064,7 @@ export default function Home() {
                 <label className="mb-1 block font-semibold">
                   社内担当者
                 </label>
+
                 <input
                   type="text"
                   placeholder="担当者"
@@ -1917,6 +2078,7 @@ export default function Home() {
                 <label className="mb-1 block font-semibold">
                   外注
                 </label>
+
                 <input
                   type="text"
                   placeholder="外注"
@@ -1930,6 +2092,7 @@ export default function Home() {
                 <label className="mb-1 block font-semibold">
                   状態
                 </label>
+
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
