@@ -38,6 +38,14 @@ type PersonalEvent = {
   description: string | null;
 };
 
+type CustomerUnavailablePeriod = {
+  id: number;
+  customer: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+};
+
 type PendingUser = {
   id: number;
   company: string;
@@ -52,6 +60,17 @@ export default function Home() {
   const [dateApplications, setDateApplications] = useState<DateApplication[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
+
+  const [customerUnavailablePeriods, setCustomerUnavailablePeriods] = useState<
+    CustomerUnavailablePeriod[]
+  >([]);
+  const [showUnavailablePeriodForm, setShowUnavailablePeriodForm] = useState(false);
+  const [editingUnavailablePeriod, setEditingUnavailablePeriod] =
+    useState<CustomerUnavailablePeriod | null>(null);
+  const [periodCustomer, setPeriodCustomer] = useState("");
+  const [periodStartDate, setPeriodStartDate] = useState("");
+  const [periodEndDate, setPeriodEndDate] = useState("");
+  const [periodReason, setPeriodReason] = useState("");
 
   const [confirmedPeopleInputs, setConfirmedPeopleInputs] = useState<
     Record<number, string>
@@ -186,6 +205,7 @@ export default function Home() {
         dateApplicationsResponse,
         personalEventsResponse,
         pendingUsersResponse,
+        unavailablePeriodsResponse,
       ] = await Promise.all([
         axios.get(`${API_URL}/jobs`),
         axios.get(`${API_URL}/date-applications`),
@@ -193,12 +213,14 @@ export default function Home() {
           params: { user_id: userId },
         }),
         axios.get(`${API_URL}/users/pending`),
+        axios.get(`${API_URL}/customer-unavailable-periods/`),
       ]);
 
       setJobs(jobsResponse.data);
       setDateApplications(dateApplicationsResponse.data);
       setPersonalEvents(personalEventsResponse.data);
       setPendingUsers(pendingUsersResponse.data);
+      setCustomerUnavailablePeriods(unavailablePeriodsResponse.data);
 
       const inputs: Record<number, string> = {};
 
@@ -469,10 +491,113 @@ export default function Home() {
   // 案件追加・編集
   // =========================
 
+  // =========================
+  // 顧客別作業不可期間
+  // =========================
+
+  const resetUnavailablePeriodForm = () => {
+    setEditingUnavailablePeriod(null);
+    setPeriodCustomer("");
+    setPeriodStartDate("");
+    setPeriodEndDate("");
+    setPeriodReason("");
+  };
+
+  const saveUnavailablePeriod = async () => {
+    if (!periodCustomer.trim() || !periodStartDate || !periodEndDate) {
+      alert("顧客名・開始日・終了日を入力してください");
+      return;
+    }
+
+    if (periodStartDate > periodEndDate) {
+      alert("終了日は開始日以降にしてください");
+      return;
+    }
+
+    const periodData = {
+      customer: periodCustomer.trim(),
+      start_date: periodStartDate,
+      end_date: periodEndDate,
+      reason: periodReason.trim() || null,
+    };
+
+    try {
+      if (editingUnavailablePeriod) {
+        await axios.put(
+          `${API_URL}/customer-unavailable-periods/${editingUnavailablePeriod.id}`,
+          periodData
+        );
+        alert("作業不可期間を更新しました");
+      } else {
+        await axios.post(
+          `${API_URL}/customer-unavailable-periods/`,
+          periodData
+        );
+        alert("作業不可期間を登録しました");
+      }
+
+      resetUnavailablePeriodForm();
+      setShowUnavailablePeriodForm(false);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      alert("作業不可期間の保存に失敗しました");
+    }
+  };
+
+  const editUnavailablePeriod = (period: CustomerUnavailablePeriod) => {
+    setEditingUnavailablePeriod(period);
+    setPeriodCustomer(period.customer);
+    setPeriodStartDate(period.start_date);
+    setPeriodEndDate(period.end_date);
+    setPeriodReason(period.reason ?? "");
+    setShowUnavailablePeriodForm(true);
+  };
+
+  const deleteUnavailablePeriod = async (periodId: number) => {
+    if (!confirm("この作業不可期間を削除しますか？")) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `${API_URL}/customer-unavailable-periods/${periodId}`
+      );
+      await loadData();
+      if (editingUnavailablePeriod?.id === periodId) {
+        resetUnavailablePeriodForm();
+        setShowUnavailablePeriodForm(false);
+      }
+      alert("作業不可期間を削除しました");
+    } catch (error) {
+      console.error(error);
+      alert("作業不可期間の削除に失敗しました");
+    }
+  };
+
   const handleSubmit = async () => {
     if (!date || !customer.trim() || !work.trim()) {
       alert("日付・顧客・作業内容を入力してください");
       return;
+    }
+
+    const matchingUnavailablePeriod = customerUnavailablePeriods.find(
+      (period) =>
+        period.customer.trim() === customer.trim() &&
+        date >= period.start_date &&
+        date <= period.end_date
+    );
+
+    if (matchingUnavailablePeriod) {
+      const reasonText = matchingUnavailablePeriod.reason
+        ? `\n理由：${matchingUnavailablePeriod.reason}`
+        : "";
+      const shouldContinue = confirm(
+        `${customer}は${matchingUnavailablePeriod.start_date}〜${matchingUnavailablePeriod.end_date}の作業不可期間に設定されています。${reasonText}\nそれでも案件を登録・更新しますか？`
+      );
+      if (!shouldContinue) {
+        return;
+      }
     }
 
     try {
@@ -672,7 +797,6 @@ export default function Home() {
           onChange={(e) => setSearch(e.target.value)}
           className="w-full max-w-md rounded-lg border border-gray-300 bg-white p-3 shadow-sm"
         />
-
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => {
@@ -870,6 +994,21 @@ export default function Home() {
                     {} as Record<string, Job[]>
                   );
 
+                  const monthStart = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+                  const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(
+                    getDaysInMonth(currentYear, currentMonth)
+                  ).padStart(2, "0")}`;
+
+                  customerUnavailablePeriods.forEach((period) => {
+                    const overlapsMonth =
+                      period.start_date <= monthEnd &&
+                      period.end_date >= monthStart;
+
+                    if (overlapsMonth && !customerGroups[period.customer]) {
+                      customerGroups[period.customer] = [];
+                    }
+                  });
+
                   return Object.entries(customerGroups).map(
                     ([customerName, customerJobs]) => (
                       <tr key={customerName}>
@@ -903,6 +1042,26 @@ export default function Home() {
                                 }`}
                               >
                                 <div className="space-y-1">
+                                  {customerUnavailablePeriods
+                                    .filter(
+                                      (period) =>
+                                        period.customer === customerName &&
+                                        dateString >= period.start_date &&
+                                        dateString <= period.end_date
+                                    )
+                                    .map((period) => (
+                                      <div
+                                        key={`unavailable-${period.id}`}
+                                        className="rounded border border-red-300 bg-red-100 p-2 text-xs text-red-800"
+                                      >
+                                        <div className="font-bold">作業不可</div>
+                                        {period.reason && (
+                                          <div className="mt-1 break-words">
+                                            {period.reason}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
                                   {dayJobs.map((job) => (
                                     <div
                                       key={job.id}
@@ -1423,6 +1582,143 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 顧客別作業不可期間 */}
+
+      <div className="mt-10 mb-6 rounded-lg bg-white p-5 shadow">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold">顧客別作業不可期間</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              顧客ごとに、保守作業を実施できない期間を登録できます。
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              if (showUnavailablePeriodForm) {
+                resetUnavailablePeriodForm();
+                setShowUnavailablePeriodForm(false);
+              } else {
+                resetUnavailablePeriodForm();
+                setShowUnavailablePeriodForm(true);
+              }
+            }}
+            className="rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700"
+          >
+            {showUnavailablePeriodForm ? "閉じる" : "＋ 作業不可期間を登録"}
+          </button>
+        </div>
+
+        {showUnavailablePeriodForm && (
+          <div className="mt-5 space-y-4 border-t pt-5">
+            <h3 className="font-bold">
+              {editingUnavailablePeriod ? "作業不可期間を編集" : "作業不可期間を新規登録"}
+            </h3>
+
+            <div>
+              <label className="mb-1 block font-semibold">顧客名</label>
+              <input
+                type="text"
+                value={periodCustomer}
+                onChange={(e) => setPeriodCustomer(e.target.value)}
+                placeholder="案件に登録している顧客名と同じ名前を入力"
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block font-semibold">開始日</label>
+                <input
+                  type="date"
+                  value={periodStartDate}
+                  onChange={(e) => setPeriodStartDate(e.target.value)}
+                  className="w-full rounded border p-3"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block font-semibold">終了日</label>
+                <input
+                  type="date"
+                  value={periodEndDate}
+                  onChange={(e) => setPeriodEndDate(e.target.value)}
+                  className="w-full rounded border p-3"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">理由（任意）</label>
+              <textarea
+                value={periodReason}
+                onChange={(e) => setPeriodReason(e.target.value)}
+                placeholder="例：設備点検期間、施設側の入館制限など"
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={saveUnavailablePeriod}
+                className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
+              >
+                {editingUnavailablePeriod ? "変更を保存" : "登録"}
+              </button>
+              {editingUnavailablePeriod && (
+                <button
+                  onClick={() => {
+                    resetUnavailablePeriodForm();
+                    setShowUnavailablePeriodForm(false);
+                  }}
+                  className="rounded-lg bg-gray-300 px-6 py-3 font-semibold text-gray-800 hover:bg-gray-400"
+                >
+                  編集をキャンセル
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 space-y-3">
+          {customerUnavailablePeriods.length === 0 ? (
+            <p className="text-gray-500">登録されている作業不可期間はありません。</p>
+          ) : (
+            customerUnavailablePeriods.map((period) => (
+              <div
+                key={period.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4"
+              >
+                <div>
+                  <p className="font-bold text-red-800">{period.customer}</p>
+                  <p className="text-sm text-gray-700">
+                    {period.start_date} 〜 {period.end_date}
+                  </p>
+                  {period.reason && (
+                    <p className="mt-1 text-sm text-gray-600">
+                      理由：{period.reason}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => editUnavailablePeriod(period)}
+                    className="rounded bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
+                  >
+                    編集
+                  </button>
+                  <button
+                    onClick={() => deleteUnavailablePeriod(period.id)}
+                    className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+                  >
+                    削除
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       {/* 下部：管理者の個人予定 */}
 
