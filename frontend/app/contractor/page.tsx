@@ -31,11 +31,21 @@ type PersonalEvent = {
   description: string | null;
 };
 
+type CustomerUnavailablePeriod = {
+  id: number;
+  customer: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+};
+
 export default function ContractorPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dateApplications, setDateApplications] = useState<DateApplication[]>([]);
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([]);
-
+  const [unavailablePeriods, setUnavailablePeriods] = useState<
+  CustomerUnavailablePeriod[]
+>([]);
   const [userId, setUserId] = useState<number | null>(null);
   const [userCompany, setUserCompany] = useState("");
   const [userName, setUserName] = useState("");
@@ -64,24 +74,27 @@ export default function ContractorPage() {
   const loadData = async (targetUserId: number) => {
     try {
       const [
-        jobsResponse,
-        applicationsResponse,
-        personalEventsResponse,
-      ] = await Promise.all([
-        axios.get(`${API_URL}/jobs`),
-        axios.get(`${API_URL}/date-applications`),
-        axios.get(`${API_URL}/personal-events/`, {
-          params: {
-            user_id: targetUserId,
-          },
-        }),
-      ]);
+  jobsResponse,
+  applicationsResponse,
+  personalEventsResponse,
+  unavailablePeriodsResponse,
+] = await Promise.all([
+  axios.get(`${API_URL}/jobs`),
+  axios.get(`${API_URL}/date-applications`),
+  axios.get(`${API_URL}/personal-events/`, {
+    params: {
+      user_id: targetUserId,
+    },
+  }),
+  axios.get(`${API_URL}/customer-unavailable-periods/`),
+]);
 
       setJobs(jobsResponse.data);
 
       setDateApplications(applicationsResponse.data);
 
       setPersonalEvents(personalEventsResponse.data);
+      setUnavailablePeriods(unavailablePeriodsResponse.data);
 
       const counts: { [key: number]: number } = {};
 
@@ -331,6 +344,15 @@ export default function ContractorPage() {
       (job.status === "予定" || job.status === "確定")
   );
 
+  // 作業不可期間に該当するか確認
+const getUnavailablePeriodsByDate = (date: string) => {
+  return unavailablePeriods.filter(
+    (period) =>
+      period.start_date <= date &&
+      period.end_date >= date
+  );
+};
+
   const myDateApplications = dateApplications
     .filter((application) => application.user_id === userId)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -416,6 +438,8 @@ export default function ContractorPage() {
               const dayJobs = monthlyJobs.filter(
                 (job) => job.date === dateString
               );
+              const dayUnavailablePeriods =
+  getUnavailablePeriodsByDate(dateString);
 
               const application = getDateApplication(dateString);
 
@@ -438,6 +462,7 @@ export default function ContractorPage() {
                   </div>
 
                   {dayJobs.length > 0 && (
+                    
   <div className="mt-1 space-y-1">
     {dayJobs.map((job) => (
       <div
@@ -454,6 +479,19 @@ export default function ContractorPage() {
     ))}
   </div>
 )}
+
+{dayUnavailablePeriods.map((period) => (
+  <div
+    key={period.id}
+    className="mt-1 rounded bg-red-100 p-1 text-[10px] leading-tight text-red-800"
+  >
+    <p className="font-bold">作業不可</p>
+    <p>{period.customer}</p>
+    {period.reason && (
+      <p>{period.reason}</p>
+    )}
+  </div>
+))}
 
                   {application && (
                     <div
