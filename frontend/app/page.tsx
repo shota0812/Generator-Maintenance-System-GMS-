@@ -3,7 +3,7 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 
-const API_URL = "https://gms-backend-iazu.onrender.com";
+const API_URL = "http://127.0.0.1:8000";
 
 // =========================
 // 認証付きAPI通信
