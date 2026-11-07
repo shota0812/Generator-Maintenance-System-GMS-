@@ -68,13 +68,36 @@ def get_current_user(
         )
 
         user_id = payload.get("sub")
+        role = payload.get("role")
 
-        if user_id is None:
+    except jwt.InvalidTokenError:
+        raise credentials_exception
+
+    # 管理者の場合
+    if user_id == "admin" and role == "管理者":
+        admin_email = os.getenv("ADMIN_EMAIL")
+
+        if not admin_email:
+            raise HTTPException(
+                status_code=500,
+                detail="管理者認証の設定がありません",
+            )
+
+        admin = (
+            db.query(models.User)
+            .filter(models.User.email == admin_email)
+            .first()
+        )
+
+        if admin is None or admin.role != "管理者":
             raise credentials_exception
 
-        user_id = int(user_id)
+        return admin
 
-    except (jwt.InvalidTokenError, ValueError, TypeError):
+    # 外注ユーザーの場合
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
         raise credentials_exception
 
     user = (
@@ -84,6 +107,9 @@ def get_current_user(
     )
 
     if user is None:
+        raise credentials_exception
+
+    if user.role != "外注":
         raise credentials_exception
 
     if user.approval_status != "承認済み":
